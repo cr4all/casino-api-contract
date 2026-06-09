@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run bundle
+
+  breaking-changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install oasdiff
+        run: npm install -g oasdiff
+      - name: Check breaking changes against main
+        run: |
+          git fetch origin main
+          git show origin/main:openapi/player-v1.yaml > /tmp/base.yaml
+          oasdiff breaking /tmp/base.yaml openapi/player-v1.yaml --fail-on ERR

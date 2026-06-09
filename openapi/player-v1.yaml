@@ -226,6 +226,21 @@ paths:
       summary: List wallet transactions
       parameters:
         - $ref: '#/components/parameters/PerPage'
+        - name: type
+          in: query
+          description: Comma-separated transaction types (deposit, withdraw, bet, win, rollback, bonus)
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
       responses:
         '200':
           description: Paginated transactions
@@ -599,6 +614,48 @@ paths:
         '422':
           $ref: '#/components/responses/ValidationError'
 
+  /games/bets:
+    get:
+      tags: [Game]
+      summary: List player bet history (game rounds)
+      parameters:
+        - $ref: '#/components/parameters/PerPage'
+        - name: game_id
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [bet, settled, cancelled]
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Paginated bet history
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaginatedBetHistory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /games/{id}:
     get:
       tags: [Game]
@@ -905,15 +962,72 @@ components:
           type: string
         amount:
           type: string
+        balance_after:
+          type: string
+          nullable: true
         status:
           type: string
         description:
+          type: string
+          nullable: true
+        reference_type:
+          type: string
+          nullable: true
+        reference_id:
           type: string
           nullable: true
         created_at:
           type: string
           format: date-time
           nullable: true
+
+    BetHistoryGame:
+      type: object
+      properties:
+        id:
+          type: integer
+          nullable: true
+        name:
+          type: string
+        provider:
+          type: string
+          nullable: true
+
+    BetHistoryItem:
+      type: object
+      required: [id, round_id, bet_amount, win_amount, net_amount, status, currency]
+      properties:
+        id:
+          type: integer
+        round_id:
+          type: string
+        game:
+          $ref: '#/components/schemas/BetHistoryGame'
+        bet_amount:
+          type: string
+        win_amount:
+          type: string
+        net_amount:
+          type: string
+        status:
+          type: string
+        currency:
+          type: string
+        played_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    PaginatedBetHistory:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BetHistoryItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
 
     PaymentMethod:
       type: object
