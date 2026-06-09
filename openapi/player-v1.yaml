@@ -287,6 +287,27 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /payment/crypto/currencies:
+    get:
+      tags: [Payment]
+      summary: List available crypto currencies for deposit (NOWPayments)
+      responses:
+        '200':
+          description: Available crypto currencies
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CryptoCurrencyList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
   /payment/deposits:
     get:
       tags: [Payment]
@@ -324,6 +345,10 @@ paths:
                   type: string
                   description: Decimal amount with up to 4 decimal places
                   example: '100.0000'
+                pay_currency:
+                  type: string
+                  description: Cryptocurrency ticker for crypto payment methods (e.g. btc, usdttrc20). Required when using a crypto payment method.
+                  example: usdttrc20
       responses:
         '201':
           description: Deposit created
@@ -1044,6 +1069,26 @@ components:
         max_amount:
           type: string
           nullable: true
+
+    CryptoCurrency:
+      type: object
+      required: [code, name]
+      properties:
+        code:
+          type: string
+          example: btc
+        name:
+          type: string
+          example: BTC
+
+    CryptoCurrencyList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CryptoCurrency'
 
     DepositCreated:
       type: object
