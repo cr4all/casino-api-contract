@@ -1,0 +1,15 @@
+extends:
+  - recommended
+
+apis:
+  player@v1:
+    root: openapi/player-v1.yaml
+
+rules:
+  no-unused-components: warn
+  operation-operationId: off
+  info-license: off
+  no-server-example.com: off
+  tag-description: off
+  no-ambiguous-paths: off
+  operation-4xx-response: off

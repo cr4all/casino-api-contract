@@ -1,0 +1,14 @@
+{
+  "name": "@cr4all/casino-api-contract",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OpenAPI contract for Casino Platform Player API",
+  "scripts": {
+    "lint": "redocly lint openapi/player-v1.yaml",
+    "bundle": "redocly bundle openapi/player-v1.yaml -o dist/player-v1.yaml",
+    "preview": "redocly preview-docs openapi/player-v1.yaml"
+  },
+  "devDependencies": {
+    "@redocly/cli": "^1.34.0"
+  }
+}

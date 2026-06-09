@@ -1,0 +1,1197 @@
+openapi: 3.0.3
+info:
+  title: Casino Platform Player API
+  version: 1.0.0
+  description: |
+    Player-facing REST API for the casino platform.
+    Source of truth derived from `routes/api.php` and Feature Tests.
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local development
+  - url: https://api.example.com/api/v1
+    description: Production
+
+tags:
+  - name: Auth
+  - name: Player
+  - name: Wallet
+  - name: Payment
+  - name: Bonus
+  - name: Notification
+  - name: Game
+
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new player
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RegisterResponseData'
+                      message:
+                        type: string
+                        example: Registration successful.
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and obtain tokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LoginResponseData'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: Tokens refreshed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RefreshResponseData'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout and revoke refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        nullable: true
+                      message:
+                        type: string
+                        example: Logged out successfully.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /player/me:
+    get:
+      tags: [Player]
+      summary: Get current player profile
+      responses:
+        '200':
+          description: Player profile
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PlayerMe'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /player/profile:
+    patch:
+      tags: [Player]
+      summary: Update player profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nickname:
+                  type: string
+                  maxLength: 50
+                language:
+                  type: string
+                  maxLength: 10
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PlayerProfileUpdate'
+                      message:
+                        type: string
+                        example: Profile updated.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /wallet/balance:
+    get:
+      tags: [Wallet]
+      summary: Get wallet balance
+      responses:
+        '200':
+          description: Wallet balance
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WalletBalance'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /wallet/transactions:
+    get:
+      tags: [Wallet]
+      summary: List wallet transactions
+      parameters:
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Paginated transactions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [items, pagination]
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/WalletTransaction'
+                          pagination:
+                            $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /payment/methods:
+    get:
+      tags: [Payment]
+      summary: List active payment methods
+      responses:
+        '200':
+          description: Payment methods
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PaymentMethod'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /payment/deposits:
+    get:
+      tags: [Payment]
+      summary: List deposit requests
+      parameters:
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Paginated deposits
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaginatedDeposits'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Payment]
+      summary: Create deposit request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [payment_method_id, amount]
+              properties:
+                payment_method_id:
+                  type: integer
+                amount:
+                  type: string
+                  description: Decimal amount with up to 4 decimal places
+                  example: '100.0000'
+      responses:
+        '201':
+          description: Deposit created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DepositCreated'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /payment/withdrawals:
+    get:
+      tags: [Payment]
+      summary: List withdrawal requests
+      parameters:
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Paginated withdrawals
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaginatedWithdrawals'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Payment]
+      summary: Create withdrawal request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [payment_method_id, amount, destination]
+              properties:
+                payment_method_id:
+                  type: integer
+                amount:
+                  type: string
+                  example: '50.0000'
+                destination:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '201':
+          description: Withdrawal created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WithdrawalCreated'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /bonus/available:
+    get:
+      tags: [Bonus]
+      summary: List available bonus policies
+      responses:
+        '200':
+          description: Available bonuses
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/BonusPolicy'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /bonus/active:
+    get:
+      tags: [Bonus]
+      summary: List active player bonuses
+      responses:
+        '200':
+          description: Active bonuses
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ActiveBonus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /bonus/{policyId}/claim:
+    post:
+      tags: [Bonus]
+      summary: Claim a bonus policy
+      parameters:
+        - name: policyId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '201':
+          description: Bonus claimed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/BonusClaimed'
+                      message:
+                        type: string
+                        example: Bonus claimed.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /notifications/messages:
+    get:
+      tags: [Notification]
+      summary: List internal messages
+      parameters:
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Paginated messages
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [items, pagination]
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/InternalMessage'
+                          pagination:
+                            $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /games/vendors:
+    get:
+      tags: [Game]
+      summary: List game vendors
+      security: []
+      responses:
+        '200':
+          description: Game vendors
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/GameVendor'
+
+  /games/types:
+    get:
+      tags: [Game]
+      summary: List game types
+      security: []
+      responses:
+        '200':
+          description: Game types
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/GameType'
+
+  /games/collections/{slug}:
+    get:
+      tags: [Game]
+      summary: Get a game collection by slug
+      security: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+            example: popular
+      responses:
+        '200':
+          description: Game collection
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/GameCollection'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /games:
+    get:
+      tags: [Game]
+      summary: List games
+      security: []
+      parameters:
+        - name: vendor
+          in: query
+          schema:
+            type: integer
+          description: Filter by vendor ID
+        - name: type
+          in: query
+          schema:
+            type: string
+          description: Filter by type slug (e.g. slot)
+        - name: collection
+          in: query
+          schema:
+            type: string
+          description: Filter by collection slug
+        - name: search
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Paginated games
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [items, pagination]
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Game'
+                          pagination:
+                            $ref: '#/components/schemas/Pagination'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /games/{id}:
+    get:
+      tags: [Game]
+      summary: Get game detail
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Game detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Game'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /games/{id}/launch:
+    post:
+      tags: [Game]
+      summary: Launch a game session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Launch URL and session
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/GameLaunchResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '502':
+          description: Provider launch error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PerPage:
+      name: per_page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+  schemas:
+    SuccessEnvelope:
+      type: object
+      required: [success, data, message]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data: {}
+        message:
+          type: string
+          nullable: true
+
+    ErrorEnvelope:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - VALIDATION_ERROR
+                - NOT_FOUND
+                - LAUNCH_ERROR
+                - UNAUTHORIZED
+                - FORBIDDEN
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+
+    Pagination:
+      type: object
+      required: [current_page, per_page, total, last_page]
+      properties:
+        current_page:
+          type: integer
+        per_page:
+          type: integer
+        total:
+          type: integer
+        last_page:
+          type: integer
+
+    RegisterRequest:
+      type: object
+      required: [email, password, password_confirmation, nickname, country, currency]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        password_confirmation:
+          type: string
+        nickname:
+          type: string
+          maxLength: 50
+        country:
+          type: string
+          minLength: 2
+          maxLength: 2
+          example: KR
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          example: KRW
+        affiliate_code:
+          type: string
+          maxLength: 50
+          nullable: true
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        device_fingerprint:
+          type: string
+          maxLength: 255
+          nullable: true
+        device_name:
+          type: string
+          maxLength: 100
+          nullable: true
+
+    UserSummary:
+      type: object
+      required: [id, email]
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+          format: email
+
+    RegisterResponseData:
+      type: object
+      required: [user, access_token, expires_in]
+      properties:
+        user:
+          $ref: '#/components/schemas/UserSummary'
+        access_token:
+          type: string
+        expires_in:
+          type: integer
+          description: Access token TTL in seconds
+
+    LoginResponseData:
+      type: object
+      required: [access_token, expires_in, refresh_token, user]
+      properties:
+        access_token:
+          type: string
+        expires_in:
+          type: integer
+        refresh_token:
+          type: string
+        user:
+          $ref: '#/components/schemas/UserSummary'
+
+    RefreshResponseData:
+      type: object
+      required: [access_token, refresh_token]
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+
+    PlayerMe:
+      type: object
+      properties:
+        id:
+          type: integer
+          nullable: true
+        user_id:
+          type: integer
+          nullable: true
+        email:
+          type: string
+          format: email
+          nullable: true
+        nickname:
+          type: string
+          nullable: true
+        country:
+          type: string
+          nullable: true
+        currency:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        kyc_status:
+          type: string
+          nullable: true
+
+    PlayerProfileUpdate:
+      type: object
+      properties:
+        id:
+          type: integer
+        nickname:
+          type: string
+          nullable: true
+        language:
+          type: string
+          nullable: true
+
+    WalletBalance:
+      type: object
+      required: [wallet_id, player_id, currency, balance, status]
+      properties:
+        wallet_id:
+          type: integer
+        player_id:
+          type: integer
+        currency:
+          type: string
+        balance:
+          type: string
+          example: '1250.0000'
+        status:
+          type: string
+
+    WalletTransaction:
+      type: object
+      required: [id, type, amount, status]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+        amount:
+          type: string
+        status:
+          type: string
+        description:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    PaymentMethod:
+      type: object
+      required: [id, type, name, min_amount]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+        name:
+          type: string
+        min_amount:
+          type: string
+        max_amount:
+          type: string
+          nullable: true
+
+    DepositCreated:
+      type: object
+      required: [deposit_id, status, amount, payment_info]
+      properties:
+        deposit_id:
+          type: integer
+        status:
+          type: string
+        amount:
+          type: string
+        payment_info:
+          type: object
+          additionalProperties: true
+
+    WithdrawalCreated:
+      type: object
+      required: [withdrawal_id, status, amount]
+      properties:
+        withdrawal_id:
+          type: integer
+        status:
+          type: string
+        amount:
+          type: string
+
+    DepositItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        amount:
+          type: string
+        currency:
+          type: string
+        status:
+          type: string
+        payment_method:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        confirmed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    WithdrawalItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        amount:
+          type: string
+        currency:
+          type: string
+        status:
+          type: string
+        payment_method:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        processed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    PaginatedDeposits:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DepositItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    PaginatedWithdrawals:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WithdrawalItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    BonusPolicy:
+      type: object
+      required: [policy_id, name, type, amount_type, amount_value, wagering_multiplier]
+      properties:
+        policy_id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+        amount_type:
+          type: string
+        amount_value:
+          type: string
+        wagering_multiplier:
+          type: number
+
+    ActiveBonus:
+      type: object
+      properties:
+        id:
+          type: integer
+        policy_name:
+          type: string
+          nullable: true
+        amount:
+          type: string
+        status:
+          type: string
+        wagering:
+          type: object
+          nullable: true
+          properties:
+            required:
+              type: string
+            wagered:
+              type: string
+
+    BonusClaimed:
+      type: object
+      required: [bonus_id, amount, status]
+      properties:
+        bonus_id:
+          type: integer
+        amount:
+          type: string
+        status:
+          type: string
+
+    InternalMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        subject:
+          type: string
+        body:
+          type: string
+        is_read:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    GameVendor:
+      type: object
+      required: [id, slug, name, game_count]
+      properties:
+        id:
+          type: integer
+        slug:
+          type: string
+        name:
+          type: string
+        logo_url:
+          type: string
+          nullable: true
+        game_count:
+          type: integer
+
+    GameType:
+      type: object
+      required: [id, slug, name, game_count]
+      properties:
+        id:
+          type: integer
+        slug:
+          type: string
+        name:
+          type: string
+        icon:
+          type: string
+          nullable: true
+        game_count:
+          type: integer
+
+    GameVendorRef:
+      type: object
+      properties:
+        id:
+          type: integer
+        slug:
+          type: string
+        name:
+          type: string
+
+    GameTypeRef:
+      type: object
+      properties:
+        id:
+          type: integer
+        slug:
+          type: string
+        name:
+          type: string
+
+    Game:
+      type: object
+      required: [id, name, game_code]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        name_ko:
+          type: string
+          nullable: true
+        thumbnail:
+          type: string
+          nullable: true
+        game_code:
+          type: string
+        symbol:
+          type: string
+          nullable: true
+        vendor:
+          allOf:
+            - $ref: '#/components/schemas/GameVendorRef'
+        type:
+          allOf:
+            - $ref: '#/components/schemas/GameTypeRef'
+
+    GameCollection:
+      type: object
+      required: [slug, name, games]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        games:
+          type: array
+          items:
+            $ref: '#/components/schemas/Game'
+
+    GameLaunchResult:
+      type: object
+      required: [launch_url, session_id, session_token]
+      properties:
+        launch_url:
+          type: string
+          format: uri
+        session_id:
+          type: integer
+        session_token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
