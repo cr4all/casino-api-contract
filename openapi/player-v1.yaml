@@ -25,6 +25,24 @@ security:
   - bearerAuth: []
 
 paths:
+  /auth/register-options:
+    get:
+      tags: [Auth]
+      summary: List supported registration currencies and countries
+      security: []
+      responses:
+        '200':
+          description: Registration options
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RegisterOptionsData'
+
   /auth/register:
     post:
       tags: [Auth]
@@ -861,6 +879,45 @@ components:
         last_page:
           type: integer
 
+    RegisterOptionsData:
+      type: object
+      required: [currencies, countries]
+      properties:
+        currencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/RegistrationCurrency'
+        countries:
+          type: array
+          items:
+            $ref: '#/components/schemas/RegistrationCountry'
+
+    RegistrationCurrency:
+      type: object
+      required: [code, name]
+      properties:
+        code:
+          type: string
+          minLength: 3
+          maxLength: 3
+          example: USD
+        name:
+          type: string
+          example: US Dollar
+
+    RegistrationCountry:
+      type: object
+      required: [code, name]
+      properties:
+        code:
+          type: string
+          minLength: 2
+          maxLength: 2
+          example: US
+        name:
+          type: string
+          example: United States
+
     RegisterRequest:
       type: object
       required: [email, password, password_confirmation, nickname, country, currency]
@@ -880,12 +937,14 @@ components:
           type: string
           minLength: 2
           maxLength: 2
-          example: KR
+          example: US
+          description: ISO 3166-1 alpha-2 code from GET /auth/register-options
         currency:
           type: string
           minLength: 3
           maxLength: 3
-          example: KRW
+          example: USD
+          description: ISO 4217 code from GET /auth/register-options
         affiliate_code:
           type: string
           maxLength: 50
