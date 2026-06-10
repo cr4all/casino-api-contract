@@ -308,6 +308,39 @@ paths:
         '422':
           $ref: '#/components/responses/ValidationError'
 
+  /payment/deposits/quote:
+    get:
+      tags: [Payment]
+      summary: Estimate wallet credit for a deposit amount (FX preview)
+      parameters:
+        - name: payment_method_id
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: amount
+          in: query
+          required: true
+          schema:
+            type: string
+            example: '50000.0000'
+      responses:
+        '200':
+          description: Deposit credit estimate
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DepositQuote'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
   /payment/deposits:
     get:
       tags: [Payment]
@@ -1069,6 +1102,44 @@ components:
         max_amount:
           type: string
           nullable: true
+        payment_currency:
+          type: string
+          description: Currency charged by the payment provider (e.g. IDR for SmilePayz)
+          example: IDR
+        wallet_currency:
+          type: string
+          nullable: true
+          description: Player wallet (points) currency from registration
+          example: EUR
+
+    DepositQuote:
+      type: object
+      required:
+        - payment_amount
+        - payment_currency
+        - credited_amount
+        - wallet_currency
+        - exchange_rate
+        - is_estimate
+      properties:
+        payment_amount:
+          type: string
+        payment_currency:
+          type: string
+        credited_amount:
+          type: string
+        wallet_currency:
+          type: string
+        exchange_rate:
+          type: string
+        exchange_rate_at:
+          type: string
+          format: date-time
+        rate_display:
+          type: string
+        is_estimate:
+          type: boolean
+          description: True for preview; final credit is determined at payment confirmation
 
     CryptoCurrency:
       type: object
@@ -1100,6 +1171,12 @@ components:
           type: string
         amount:
           type: string
+        currency:
+          type: string
+        estimated_credit:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/DepositQuote'
         payment_info:
           type: object
           additionalProperties: true
@@ -1124,6 +1201,13 @@ components:
           type: string
         currency:
           type: string
+        credited_amount:
+          type: string
+          nullable: true
+          description: Wallet points credited after confirmation
+        credited_currency:
+          type: string
+          nullable: true
         status:
           type: string
         payment_method:
