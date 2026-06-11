@@ -18,6 +18,7 @@ tags:
   - name: Wallet
   - name: Payment
   - name: Bonus
+  - name: Affiliate
   - name: Notification
   - name: Game
 
@@ -545,6 +546,94 @@ paths:
         '422':
           $ref: '#/components/responses/ValidationError'
 
+  /affiliate/me:
+    get:
+      tags: [Affiliate]
+      summary: Get affiliate profile and referral link
+      responses:
+        '200':
+          description: Affiliate profile
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AffiliateMe'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /affiliate/stats:
+    get:
+      tags: [Affiliate]
+      summary: Get affiliate dashboard statistics
+      responses:
+        '200':
+          description: Affiliate stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AffiliateStats'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /affiliate/players:
+    get:
+      tags: [Affiliate]
+      summary: List referred players
+      parameters:
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Paginated referred players
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AffiliatePlayerList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /affiliate/commissions:
+    get:
+      tags: [Affiliate]
+      summary: List commission history
+      parameters:
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Paginated commissions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AffiliateCommissionList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /notifications/messages:
     get:
       tags: [Notification]
@@ -977,6 +1066,10 @@ components:
         email:
           type: string
           format: email
+        role:
+          type: string
+          example: player
+          description: User role (player, affiliate, admin, operator)
 
     RegisterResponseData:
       type: object
@@ -1497,3 +1590,95 @@ components:
           type: string
           format: date-time
           nullable: true
+
+    AffiliateMe:
+      type: object
+      required: [code, commission_model, commission_rate, status, referral_link]
+      properties:
+        code:
+          type: string
+        commission_model:
+          type: string
+          enum: [cpa, revshare]
+        commission_rate:
+          type: string
+        cpa_amount:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive]
+        referral_link:
+          type: string
+          example: '?ref=AFF001'
+
+    AffiliateStats:
+      type: object
+      required: [referred_players_count, commissions_count, total_commission, pending_commission]
+      properties:
+        referred_players_count:
+          type: integer
+        commissions_count:
+          type: integer
+        total_commission:
+          type: string
+        pending_commission:
+          type: string
+
+    AffiliateReferredPlayer:
+      type: object
+      required: [player_id, registered_at]
+      properties:
+        player_id:
+          type: integer
+        nickname:
+          type: string
+          nullable: true
+        registered_at:
+          type: string
+          format: date-time
+
+    AffiliatePlayerList:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AffiliateReferredPlayer'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    AffiliateCommission:
+      type: object
+      required: [id, type, amount, reference_type, reference_id, status]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [cpa, revshare]
+        amount:
+          type: string
+        reference_type:
+          type: string
+        reference_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, paid]
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    AffiliateCommissionList:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AffiliateCommission'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
