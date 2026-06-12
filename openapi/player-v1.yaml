@@ -1332,6 +1332,7 @@ components:
         currency:
           type: string
         estimated_credit:
+          type: object
           nullable: true
           allOf:
             - $ref: '#/components/schemas/DepositQuote'
