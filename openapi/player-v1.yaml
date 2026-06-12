@@ -1052,11 +1052,17 @@ components:
 
     LoginRequest:
       type: object
-      required: [email, password]
+      required: [password]
       properties:
         email:
           type: string
-          format: email
+          description: Email address (use with password for email login)
+        username:
+          type: string
+          description: Username (use with password for username login)
+        phone:
+          type: string
+          description: Phone number in E.164 format (use with password for phone login)
         password:
           type: string
         device_fingerprint:
