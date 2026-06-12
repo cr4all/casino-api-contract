@@ -4,6 +4,12 @@ All notable changes to the Player API contract are documented here.
 
 Format follows [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-06-12
+
+### Added
+
+- Required `phone` field on `POST /auth/register` request body (E.164 format)
+
 ## [1.0.0] - 2026-06-09
 
 ### Added
