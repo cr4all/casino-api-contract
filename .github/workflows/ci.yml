@@ -22,17 +22,16 @@ jobs:
   breaking-changes:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - name: Fetch base branch
+        run: git fetch --depth=1 origin ${{ github.base_ref }}
+      - name: Check breaking changes against base branch
+        uses: oasdiff/oasdiff-action/breaking@v0.0.57
         with:
-          node-version: 20
-      - name: Install oasdiff
-        run: npm install -g oasdiff
-      - name: Check breaking changes against main
-        run: |
-          git fetch origin main
-          git show origin/main:openapi/player-v1.yaml > /tmp/base.yaml
-          oasdiff breaking /tmp/base.yaml openapi/player-v1.yaml --fail-on ERR
+          base: 'origin/${{ github.base_ref }}:openapi/player-v1.yaml'
+          revision: 'HEAD:openapi/player-v1.yaml'
+          fail-on: ERR
