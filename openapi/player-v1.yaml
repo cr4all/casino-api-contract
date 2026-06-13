@@ -239,29 +239,6 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /wallet/balance/stream:
-    get:
-      tags: [Wallet]
-      summary: Stream wallet balance updates (SSE)
-      description: |
-        Server-Sent Events stream for real-time wallet balance updates.
-        Emits `snapshot` on connect and `balance` when the wallet changes.
-      responses:
-        '200':
-          description: SSE stream
-          content:
-            text/event-stream:
-              schema:
-                type: string
-                description: |
-                  SSE events:
-                  - `event: snapshot` — initial balance on connect
-                  - `event: balance` — balance update payload (`WalletBalanceEvent` JSON)
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-
   /wallet/transactions:
     get:
       tags: [Wallet]
@@ -1213,6 +1190,28 @@ components:
             event_type:
               type: string
               example: payment.deposit
+
+    x-realtime:
+      walletBalance:
+        summary: Real-time wallet balance (WebSocket)
+        description: |
+          Subscribe via Laravel Reverb (Pusher protocol) for live balance updates.
+          Initial balance should be fetched with `GET /wallet/balance`.
+        connection:
+          url: "ws(s)://{REVERB_HOST}:{REVERB_PORT}/app/{REVERB_APP_KEY}"
+          protocol: websocket
+        auth:
+          method: POST
+          url: /api/broadcasting/auth
+          security:
+            - bearerAuth: []
+          body:
+            channel_name: private-wallet.player.{playerId}
+            socket_id: string
+        channel: private-wallet.player.{playerId}
+        event: balance.updated
+        payload:
+          $ref: '#/components/schemas/WalletBalanceEvent'
 
     WalletTransaction:
       type: object
