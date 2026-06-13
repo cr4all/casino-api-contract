@@ -44,6 +44,24 @@ paths:
                       data:
                         $ref: '#/components/schemas/RegisterOptionsData'
 
+  /auth/session-policy:
+    get:
+      tags: [Auth]
+      summary: Player session policy for client-side idle logout
+      security: []
+      responses:
+        '200':
+          description: Session policy
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SessionPolicyData'
+
   /auth/register:
     post:
       tags: [Auth]
@@ -986,6 +1004,16 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/RegistrationCountry'
+
+    SessionPolicyData:
+      type: object
+      required: [idle_timeout_minutes]
+      properties:
+        idle_timeout_minutes:
+          type: integer
+          minimum: 0
+          maximum: 480
+          description: Minutes of inactivity before automatic logout. 0 disables idle logout.
 
     RegistrationCurrency:
       type: object
