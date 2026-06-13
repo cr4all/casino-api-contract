@@ -239,6 +239,29 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /wallet/balance/stream:
+    get:
+      tags: [Wallet]
+      summary: Stream wallet balance updates (SSE)
+      description: |
+        Server-Sent Events stream for real-time wallet balance updates.
+        Emits `snapshot` on connect and `balance` when the wallet changes.
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  SSE events:
+                  - `event: snapshot` — initial balance on connect
+                  - `event: balance` — balance update payload (`WalletBalanceEvent` JSON)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /wallet/transactions:
     get:
       tags: [Wallet]
@@ -1178,6 +1201,18 @@ components:
           example: '1250.0000'
         status:
           type: string
+
+    WalletBalanceEvent:
+      allOf:
+        - $ref: '#/components/schemas/WalletBalance'
+        - type: object
+          properties:
+            ledger_id:
+              type: integer
+              nullable: true
+            event_type:
+              type: string
+              example: payment.deposit
 
     WalletTransaction:
       type: object
