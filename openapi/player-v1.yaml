@@ -1219,28 +1219,6 @@ components:
               type: string
               example: payment.deposit
 
-    x-realtime:
-      walletBalance:
-        summary: Real-time wallet balance (WebSocket)
-        description: |
-          Subscribe via Laravel Reverb (Pusher protocol) for live balance updates.
-          Initial balance should be fetched with `GET /wallet/balance`.
-        connection:
-          url: "ws(s)://{REVERB_HOST}:{REVERB_PORT}/app/{REVERB_APP_KEY}"
-          protocol: websocket
-        auth:
-          method: POST
-          url: /api/broadcasting/auth
-          security:
-            - bearerAuth: []
-          body:
-            channel_name: private-wallet.player.{playerId}
-            socket_id: string
-        channel: private-wallet.player.{playerId}
-        event: balance.updated
-        payload:
-          $ref: '#/components/schemas/WalletBalanceEvent'
-
     WalletTransaction:
       type: object
       required: [id, type, amount, status]
@@ -1764,3 +1742,25 @@ components:
             $ref: '#/components/schemas/AffiliateCommission'
         pagination:
           $ref: '#/components/schemas/Pagination'
+
+x-realtime:
+  walletBalance:
+    summary: Real-time wallet balance (WebSocket)
+    description: |
+      Subscribe via Laravel Reverb (Pusher protocol) for live balance updates.
+      Initial balance should be fetched with `GET /wallet/balance`.
+    connection:
+      url: "ws(s)://{REVERB_HOST}:{REVERB_PORT}/app/{REVERB_APP_KEY}"
+      protocol: websocket
+    auth:
+      method: POST
+      url: /api/broadcasting/auth
+      security:
+        - bearerAuth: []
+      body:
+        channel_name: private-wallet.player.{playerId}
+        socket_id: string
+    channel: private-wallet.player.{playerId}
+    event: balance.updated
+    payload:
+      $ref: '#/components/schemas/WalletBalanceEvent'
