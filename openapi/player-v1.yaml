@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Casino Platform Player API
-  version: 1.0.0
+  version: 1.4.2
   description: |
     Player-facing REST API for the casino platform.
     Source of truth derived from `routes/api.php` and Feature Tests.
@@ -180,6 +180,73 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /auth/password-recovery/request:
+    post:
+      tags: [Auth]
+      summary: Request a password recovery verification code
+      description: |
+        Sends a numeric verification code by email or SMS when an active player account exists.
+        Provide exactly one of `email` or `phone` (E.164). Always returns success to avoid enumeration.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordRecoveryRequestBody'
+      responses:
+        '200':
+          description: Request accepted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        nullable: true
+                      message:
+                        type: string
+                        example: If an account exists for this email, a verification code has been sent.
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/password-recovery/reset:
+    post:
+      tags: [Auth]
+      summary: Reset password using email or phone verification code
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordRecoveryResetBody'
+      responses:
+        '200':
+          description: Password reset successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        nullable: true
+                      message:
+                        type: string
+                        example: Password has been reset successfully.
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
   /player/me:
     get:
       tags: [Player]
@@ -235,6 +302,37 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /player/password:
+    put:
+      tags: [Player]
+      summary: Change player password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePlayerPasswordBody'
+      responses:
+        '200':
+          description: Password updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        nullable: true
+                      message:
+                        type: string
+                        example: Password updated successfully.
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /wallet/balance:
     get:
@@ -940,6 +1038,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
+    TooManyRequests:
+      description: Too many requests
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
 
   schemas:
     SuccessEnvelope:
@@ -1102,6 +1206,49 @@ components:
           maxLength: 100
           nullable: true
 
+    PasswordRecoveryRequestBody:
+      type: object
+      description: Exactly one of email or phone is required.
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 255
+          example: player@example.com
+        phone:
+          type: string
+          maxLength: 20
+          pattern: '^\+[1-9]\d{1,14}$'
+          example: '+12025550123'
+          description: Phone number in E.164 format
+
+    PasswordRecoveryResetBody:
+      type: object
+      description: Exactly one of email or phone is required (same channel used for the code request).
+      required: [code, password, password_confirmation]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 255
+          example: player@example.com
+        phone:
+          type: string
+          maxLength: 20
+          pattern: '^\+[1-9]\d{1,14}$'
+          example: '+12025550123'
+        code:
+          type: string
+          pattern: '^\d{6}$'
+          example: '123456'
+          description: Six-digit verification code sent by email or SMS
+        password:
+          type: string
+          minLength: 8
+        password_confirmation:
+          type: string
+          minLength: 8
+
     UserSummary:
       type: object
       required: [id, email]
@@ -1166,30 +1313,55 @@ components:
         nickname:
           type: string
           nullable: true
+        phone:
+          type: string
+          nullable: true
+          description: Phone number in E.164 format
+          example: '+12025550123'
         country:
           type: string
           nullable: true
+          description: ISO 3166-1 alpha-2 country code
+          example: SG
+        country_name:
+          type: string
+          nullable: true
+          description: Human-readable country name resolved from platform config
+          example: Singapore
         currency:
-          type: string
-          nullable: true
-        status:
-          type: string
-          nullable: true
-        kyc_status:
-          type: string
-          nullable: true
-
-    PlayerProfileUpdate:
-      type: object
-      properties:
-        id:
-          type: integer
-        nickname:
           type: string
           nullable: true
         language:
           type: string
           nullable: true
+          example: en
+        status:
+          type: string
+          nullable: true
+          description: Player account status
+          example: active
+        kyc_status:
+          type: string
+          nullable: true
+          description: KYC verification status
+          example: pending
+
+    PlayerProfileUpdate:
+      allOf:
+        - $ref: '#/components/schemas/PlayerMe'
+
+    ChangePlayerPasswordBody:
+      type: object
+      required: [current_password, password, password_confirmation]
+      properties:
+        current_password:
+          type: string
+        password:
+          type: string
+          minLength: 8
+        password_confirmation:
+          type: string
+          minLength: 8
 
     WalletBalance:
       type: object
