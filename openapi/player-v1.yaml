@@ -1566,7 +1566,7 @@ components:
 
     GameVendor:
       type: object
-      required: [id, slug, name, game_count]
+      required: [id, slug, name, game_count, sort_order]
       properties:
         id:
           type: integer
@@ -1577,6 +1577,8 @@ components:
         logo_url:
           type: string
           nullable: true
+        sort_order:
+          type: integer
         game_count:
           type: integer
 

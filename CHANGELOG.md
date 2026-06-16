@@ -4,6 +4,12 @@ All notable changes to the Player API contract are documented here.
 
 Format follows [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-06-16
+
+### Added
+
+- `sort_order` field on `GameVendor` schema returned by `GET /games/vendors`
+
 ## [1.1.0] - 2026-06-12
 
 ### Added
