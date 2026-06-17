@@ -1588,6 +1588,10 @@ components:
           type: integer
         amount:
           type: string
+        received_amount:
+          type: string
+          nullable: true
+          description: Actual amount received from the payment provider (payment currency)
         currency:
           type: string
         credited_amount:
