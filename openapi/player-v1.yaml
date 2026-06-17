@@ -425,7 +425,14 @@ paths:
   /payment/crypto/currencies:
     get:
       tags: [Payment]
-      summary: List available crypto currencies for deposit (NOWPayments)
+      summary: List available crypto currencies for deposit
+      parameters:
+        - name: payment_method_id
+          in: query
+          required: false
+          description: Crypto payment method ID. When provided, currencies are loaded from that provider (NOWPayments or Passimpay).
+          schema:
+            type: integer
       responses:
         '200':
           description: Available crypto currencies
@@ -515,8 +522,8 @@ paths:
                   example: '100.0000'
                 pay_currency:
                   type: string
-                  description: Cryptocurrency ticker for crypto payment methods (e.g. btc, usdttrc20). Required when using a crypto payment method.
-                  example: usdttrc20
+                  description: Cryptocurrency code for crypto payment methods. NOWPayments uses tickers (e.g. btc, usdttrc20). Passimpay uses normalized slugs (e.g. btc, usdt_trc20). Required when using a crypto payment method.
+                  example: usdt_trc20
       responses:
         '201':
           description: Deposit created
