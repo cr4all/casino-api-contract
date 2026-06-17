@@ -466,6 +466,15 @@ paths:
           schema:
             type: string
             example: '50000.0000'
+        - name: local_country
+          in: query
+          required: false
+          description: ISO 3166-1 alpha-2 country code for Smilepayz local payment. Required when the payment method type is local.
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 2
+            example: ID
       responses:
         '200':
           description: Deposit credit estimate
@@ -524,6 +533,12 @@ paths:
                   type: string
                   description: Cryptocurrency code for crypto payment methods. NOWPayments uses tickers (e.g. btc, usdttrc20). Passimpay uses normalized slugs (e.g. btc, usdt_trc20). Required when using a crypto payment method.
                   example: usdt_trc20
+                local_country:
+                  type: string
+                  minLength: 2
+                  maxLength: 2
+                  description: ISO 3166-1 alpha-2 country code for Smilepayz local payment. Required when the payment method type is local.
+                  example: ID
       responses:
         '201':
           description: Deposit created
@@ -1492,13 +1507,44 @@ components:
           nullable: true
         payment_currency:
           type: string
-          description: Currency charged by the payment provider (e.g. IDR for SmilePayz)
+          nullable: true
+          description: Currency charged by the payment provider. Null for Smilepayz local payment until a country is selected.
           example: IDR
         wallet_currency:
           type: string
           nullable: true
           description: Player wallet (points) currency from registration
           example: EUR
+        supported_countries:
+          type: array
+          description: Smilepayz-supported countries for local payment methods
+          items:
+            $ref: '#/components/schemas/SmilePayzSupportedCountry'
+        default_country:
+          type: string
+          nullable: true
+          description: Player profile country when supported by Smilepayz
+          example: ID
+
+    SmilePayzSupportedCountry:
+      type: object
+      required: [code, name, currency, region, min_amount]
+      properties:
+        code:
+          type: string
+          example: ID
+        name:
+          type: string
+          example: Indonesia
+        currency:
+          type: string
+          example: IDR
+        region:
+          type: string
+          example: indonesia
+        min_amount:
+          type: string
+          example: '10000.0000'
 
     DepositQuote:
       type: object
