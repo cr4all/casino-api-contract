@@ -4,6 +4,27 @@ All notable changes to the Player API contract are documented here.
 
 Format follows [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] - 2026-06-18
+
+### Added
+
+- `GET /payment/countries` — countries available for deposit/withdraw with default country
+- `GET /payment/deposit-options` — unified deposit options per country (local, crypto, manual)
+- `GET /payment/withdraw-options` — unified withdraw options per country
+- `PaymentOption`, `PaymentCountry`, `PaymentDestinationField` schemas
+
+### Removed (breaking)
+
+- `GET /payment/methods`
+- `GET /payment/crypto/currencies`
+- `PaymentMethod`, `SmilePayzSupportedCountry`, `CryptoCurrency`, `CryptoCurrencyList` schemas
+
+### Changed (breaking)
+
+- `GET /payment/deposits/quote` — uses `option_key`, `amount`, `country` instead of `payment_method_id` / `local_country` / `pay_currency`
+- `POST /payment/deposits` — uses `option_key`, `amount`, `country`
+- `POST /payment/withdrawals` — uses `option_key`, `amount`, `country`, `destination`
+
 ## [1.4.2] - 2026-06-16
 
 ### Added

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Casino Platform Player API
-  version: 1.4.2
+  version: 1.5.0
   description: |
     Player-facing REST API for the casino platform.
     Source of truth derived from `routes/api.php` and Feature Tests.
@@ -401,13 +401,13 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /payment/methods:
+  /payment/countries:
     get:
       tags: [Payment]
-      summary: List active payment methods
+      summary: List countries available for deposit and withdrawal
       responses:
         '200':
-          description: Payment methods
+          description: Payment countries
           content:
             application/json:
               schema:
@@ -416,26 +416,26 @@ paths:
                   - type: object
                     properties:
                       data:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/PaymentMethod'
+                        $ref: '#/components/schemas/PaymentCountryList'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
-  /payment/crypto/currencies:
+  /payment/deposit-options:
     get:
       tags: [Payment]
-      summary: List available crypto currencies for deposit
+      summary: List deposit payment options for a country
       parameters:
-        - name: payment_method_id
+        - name: country
           in: query
-          required: false
-          description: Crypto payment method ID. When provided, currencies are loaded from that provider (NOWPayments or Passimpay).
+          required: true
           schema:
-            type: integer
+            type: string
+            minLength: 2
+            maxLength: 2
+            example: ID
       responses:
         '200':
-          description: Available crypto currencies
+          description: Deposit options
           content:
             application/json:
               schema:
@@ -444,7 +444,37 @@ paths:
                   - type: object
                     properties:
                       data:
-                        $ref: '#/components/schemas/CryptoCurrencyList'
+                        $ref: '#/components/schemas/PaymentOptionList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /payment/withdraw-options:
+    get:
+      tags: [Payment]
+      summary: List withdrawal payment options for a country
+      parameters:
+        - name: country
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 2
+            example: PH
+      responses:
+        '200':
+          description: Withdrawal options
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaymentOptionList'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '422':
@@ -455,21 +485,21 @@ paths:
       tags: [Payment]
       summary: Estimate wallet credit for a deposit amount (FX preview)
       parameters:
-        - name: payment_method_id
+        - name: option_key
           in: query
           required: true
           schema:
-            type: integer
+            type: string
+            example: local:4:ID:QRIS
         - name: amount
           in: query
           required: true
           schema:
             type: string
             example: '50000.0000'
-        - name: local_country
+        - name: country
           in: query
-          required: false
-          description: ISO 3166-1 alpha-2 country code for Smilepayz local payment. Required when the payment method type is local.
+          required: true
           schema:
             type: string
             minLength: 2
@@ -521,23 +551,21 @@ paths:
           application/json:
             schema:
               type: object
-              required: [payment_method_id, amount]
+              required: [option_key, amount, country]
               properties:
-                payment_method_id:
-                  type: integer
+                option_key:
+                  type: string
+                  description: Selected payment option key from deposit-options response
+                  example: local:4:ID:QRIS
                 amount:
                   type: string
                   description: Decimal amount with up to 4 decimal places
                   example: '100.0000'
-                pay_currency:
-                  type: string
-                  description: Cryptocurrency code for crypto payment methods. NOWPayments uses tickers (e.g. btc, usdttrc20). Passimpay uses normalized slugs (e.g. btc, usdt_trc20). Required when using a crypto payment method.
-                  example: usdt_trc20
-                local_country:
+                country:
                   type: string
                   minLength: 2
                   maxLength: 2
-                  description: ISO 3166-1 alpha-2 country code for Smilepayz local payment. Required when the payment method type is local.
+                  description: ISO 3166-1 alpha-2 country code
                   example: ID
       responses:
         '201':
@@ -585,16 +613,24 @@ paths:
           application/json:
             schema:
               type: object
-              required: [payment_method_id, amount, destination]
+              required: [option_key, amount, country, destination]
               properties:
-                payment_method_id:
-                  type: integer
+                option_key:
+                  type: string
+                  description: Selected payment option key from withdraw-options response
+                  example: crypto:2:btc
                 amount:
                   type: string
                   example: '50.0000'
+                country:
+                  type: string
+                  minLength: 2
+                  maxLength: 2
+                  example: US
                 destination:
                   type: object
                   additionalProperties: true
+                  description: Destination fields (address, account, network, etc.) based on option destination_fields
       responses:
         '201':
           description: Withdrawal created
@@ -1490,61 +1526,110 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
-    PaymentMethod:
+    PaymentCountry:
       type: object
-      required: [id, type, name, min_amount]
-      properties:
-        id:
-          type: integer
-        type:
-          type: string
-        name:
-          type: string
-        min_amount:
-          type: string
-        max_amount:
-          type: string
-          nullable: true
-        payment_currency:
-          type: string
-          nullable: true
-          description: Currency charged by the payment provider. Null for Smilepayz local payment until a country is selected.
-          example: IDR
-        wallet_currency:
-          type: string
-          nullable: true
-          description: Player wallet (points) currency from registration
-          example: EUR
-        supported_countries:
-          type: array
-          description: Smilepayz-supported countries for local payment methods
-          items:
-            $ref: '#/components/schemas/SmilePayzSupportedCountry'
-        default_country:
-          type: string
-          nullable: true
-          description: Player profile country when supported by Smilepayz
-          example: ID
-
-    SmilePayzSupportedCountry:
-      type: object
-      required: [code, name, currency, region, min_amount]
+      required: [code, name]
       properties:
         code:
           type: string
+          minLength: 2
+          maxLength: 2
           example: ID
         name:
           type: string
           example: Indonesia
-        currency:
+
+    PaymentCountryList:
+      type: object
+      required: [countries]
+      properties:
+        countries:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaymentCountry'
+        default_country:
           type: string
-          example: IDR
-        region:
+          nullable: true
+          example: ID
+
+    PaymentDestinationField:
+      type: object
+      required: [name, label, required]
+      properties:
+        name:
           type: string
-          example: indonesia
+          example: address
+        label:
+          type: string
+          example: Wallet address
+        required:
+          type: boolean
+
+    PaymentOption:
+      type: object
+      required: [key, payment_method_id, kind, label, payment_currency, min_amount, destination_fields]
+      properties:
+        key:
+          type: string
+          example: local:4:PH:GCASH
+        payment_method_id:
+          type: integer
+        kind:
+          type: string
+          enum: [local, crypto, manual]
+        provider:
+          type: string
+          nullable: true
+          example: smilepayz
+        label:
+          type: string
+          example: GCash
+        description:
+          type: string
+          nullable: true
+        logo_url:
+          type: string
+          nullable: true
+        logo_key:
+          type: string
+          nullable: true
+          example: gcash
+        payment_currency:
+          type: string
+          example: PHP
         min_amount:
           type: string
-          example: '10000.0000'
+          example: '100.0000'
+        max_amount:
+          type: string
+          nullable: true
+        local_country:
+          type: string
+          nullable: true
+          example: PH
+        local_payment_method:
+          type: string
+          nullable: true
+          example: GCASH
+        pay_currency:
+          type: string
+          nullable: true
+          example: btc
+        destination_fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaymentDestinationField'
+
+    PaymentOptionList:
+      type: object
+      required: [country, items]
+      properties:
+        country:
+          $ref: '#/components/schemas/PaymentCountry'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaymentOption'
 
     DepositQuote:
       type: object
@@ -1574,26 +1659,6 @@ components:
         is_estimate:
           type: boolean
           description: True for preview; final credit is determined at payment confirmation
-
-    CryptoCurrency:
-      type: object
-      required: [code, name]
-      properties:
-        code:
-          type: string
-          example: btc
-        name:
-          type: string
-          example: BTC
-
-    CryptoCurrencyList:
-      type: object
-      required: [items]
-      properties:
-        items:
-          type: array
-          items:
-            $ref: '#/components/schemas/CryptoCurrency'
 
     DepositCreated:
       type: object
