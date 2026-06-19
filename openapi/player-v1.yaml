@@ -1430,7 +1430,7 @@ components:
         role:
           type: string
           example: player
-          description: User role (player, affiliate, admin, operator)
+          description: User role (player, affiliate, admin, sales, support)
 
     RegisterResponseData:
       type: object
