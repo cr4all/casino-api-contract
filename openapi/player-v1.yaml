@@ -808,6 +808,117 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /affiliate/sub-affiliates:
+    get:
+      tags: [Affiliate]
+      summary: List sub-affiliates (top-level affiliates only)
+      parameters:
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Paginated sub-affiliates
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AffiliateSubAffiliateList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Affiliate]
+      summary: Create a sub-affiliate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSubAffiliateRequest'
+      responses:
+        '201':
+          description: Sub-affiliate created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AffiliateSubAffiliate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /affiliate/sub-affiliates/{id}:
+    patch:
+      tags: [Affiliate]
+      summary: Update a sub-affiliate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSubAffiliateRequest'
+      responses:
+        '200':
+          description: Sub-affiliate updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AffiliateSubAffiliate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /affiliate/password:
+    put:
+      tags: [Affiliate]
+      summary: Change password with current password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePlayerPasswordBody'
+      responses:
+        '200':
+          description: Password updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
   /notifications/messages:
     get:
       tags: [Notification]
@@ -1947,13 +2058,13 @@ components:
 
     AffiliateMe:
       type: object
-      required: [code, commission_model, commission_rate, status, referral_link]
+      required: [code, commission_model, commission_rate, status, referral_link, is_sub_affiliate, can_manage_sub_affiliates]
       properties:
         code:
           type: string
         commission_model:
           type: string
-          enum: [cpa, revshare]
+          enum: [cpa, revshare, hybrid]
         commission_rate:
           type: string
         cpa_amount:
@@ -1965,6 +2076,19 @@ components:
         referral_link:
           type: string
           example: '?ref=AFF001'
+        is_sub_affiliate:
+          type: boolean
+        can_manage_sub_affiliates:
+          type: boolean
+        parent_code:
+          type: string
+          nullable: true
+        email:
+          type: string
+          format: email
+          nullable: true
+        email_verified:
+          type: boolean
 
     AffiliateStats:
       type: object
@@ -1977,6 +2101,14 @@ components:
         total_commission:
           type: string
         pending_commission:
+          type: string
+        sub_affiliates_count:
+          type: integer
+        downline_players_count:
+          type: integer
+        override_commission:
+          type: string
+        pending_override_commission:
           type: string
 
     AffiliateReferredPlayer:
@@ -2005,13 +2137,15 @@ components:
 
     AffiliateCommission:
       type: object
-      required: [id, type, amount, reference_type, reference_id, status]
+      required: [id, player_id, type, amount, reference_type, reference_id, status]
       properties:
         id:
           type: integer
+        player_id:
+          type: integer
         type:
           type: string
-          enum: [cpa, revshare]
+          enum: [cpa, revshare, override]
         amount:
           type: string
         reference_type:
@@ -2036,6 +2170,88 @@ components:
             $ref: '#/components/schemas/AffiliateCommission'
         pagination:
           $ref: '#/components/schemas/Pagination'
+
+    AffiliateSubAffiliate:
+      type: object
+      required: [id, code, commission_model, commission_rate, status, referred_players_count]
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        commission_model:
+          type: string
+          enum: [cpa, revshare, hybrid]
+        commission_rate:
+          type: string
+        cpa_amount:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive]
+        referred_players_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    AffiliateSubAffiliateList:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AffiliateSubAffiliate'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    CreateSubAffiliateRequest:
+      type: object
+      required: [code, email, password, commission_model]
+      properties:
+        code:
+          type: string
+          maxLength: 50
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        commission_model:
+          type: string
+          enum: [cpa, revshare, hybrid]
+        commission_rate:
+          type: number
+          minimum: 0
+          maximum: 100
+        cpa_amount:
+          type: number
+          minimum: 0
+        status:
+          type: string
+          enum: [active, inactive]
+
+    UpdateSubAffiliateRequest:
+      type: object
+      properties:
+        commission_model:
+          type: string
+          enum: [cpa, revshare, hybrid]
+        commission_rate:
+          type: number
+          minimum: 0
+          maximum: 100
+        cpa_amount:
+          type: number
+          minimum: 0
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive]
 
 x-realtime:
   walletBalance:
