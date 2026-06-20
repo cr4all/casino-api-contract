@@ -1710,10 +1710,19 @@ components:
           example: PHP
         min_amount:
           type: string
-          example: '100.0000'
+          description: >
+            Minimum deposit amount in payment_currency. For local deposit options this value is
+            converted from the player's wallet currency, normalized for display, and expressed in
+            the regional payment currency (e.g. IDR, PHP).
+          example: '10000.0000'
         max_amount:
           type: string
           nullable: true
+          description: >
+            Maximum deposit amount in payment_currency, or null when no limit applies. For local
+            deposit options this value is converted from the player's wallet currency, normalized
+            for display, and expressed in the regional payment currency.
+          example: '150000000.0000'
         local_country:
           type: string
           nullable: true
