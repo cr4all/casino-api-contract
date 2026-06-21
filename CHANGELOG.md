@@ -1,8 +1,35 @@
 # Changelog
 
-All notable changes to the Player API contract are documented here.
+All notable changes to integration contracts in this repository are documented here.
 
 Format follows [Semantic Versioning](https://semver.org/).
+
+## Platform Events
+
+### [platform-events-1.0.0] - 2026-06-21
+
+Initial RabbitMQ event contract for Casino Platform ↔ AFS integration.
+
+**Spec:** `asyncapi/platform-events-v1.yaml`
+
+**Events:**
+
+| event_type | Description |
+|------------|-------------|
+| `wallet.bet` | Wallet bet debit |
+| `wallet.win` | Wallet win credit |
+| `wallet.rollback` | Wallet transaction rollback |
+| `payment.deposit` | Deposit completed |
+| `payment.withdraw` | Withdrawal completed |
+| `bonus.created` | Bonus granted (cash or free spin) |
+| `affiliate.commission` | Affiliate commission recorded |
+| `notification.send` | Outbound notification request (consumer defined; publisher TBD) |
+
+Derived from `casino-backend` → `EventPublisher`, domain Actions, and Consumers.
+
+---
+
+## Player REST API
 
 ## [1.5.0] - 2026-06-18
 

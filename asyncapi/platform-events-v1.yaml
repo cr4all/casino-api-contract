@@ -1,0 +1,819 @@
+asyncapi: '2.6.0'
+id: urn:cr4all:casino:platform-events:v1
+info:
+  title: Casino Platform Events
+  version: 1.0.0
+  description: |
+    RabbitMQ event contract between the Casino Platform and external systems (e.g. AFS).
+
+    **Single source of truth** for platform event envelopes and payloads.
+    Implementation reference: `casino-backend` → `EventPublisher`, domain Actions, and Consumers.
+
+    ## Transport
+
+    | Item | Value |
+    |------|-------|
+    | Exchange | `casino.events` (topic, durable) |
+    | Routing key | Same as `event_type` (e.g. `wallet.bet`) |
+    | Content-Type | `application/json` |
+    | Charset | UTF-8 |
+
+    ## Envelope
+
+    Every message body is a `PlatformEventEnvelope` JSON object.
+    `event_type` inside the body must match the AMQP routing key.
+
+    ## Versioning
+
+    - **MAJOR**: remove event, rename `event_type`, or breaking payload/type change
+    - **MINOR**: new event type or new optional `data` fields
+    - **PATCH**: documentation or example fixes only
+
+    Bump `info.version` and `CHANGELOG.md` on every contract change.
+    Backend publishes `version: "1.0"` in the envelope until a breaking envelope revision ships.
+
+    ## Amount conventions
+
+    - Monetary values are **strings** with exactly 4 decimal places (`DecimalAmount`).
+    - `wallet.bet`, `wallet.win`, `payment.*`, `bonus.created`, `affiliate.commission`: positive absolute values.
+    - `wallet.rollback`: signed ledger amount (may be negative).
+
+    ## Idempotency
+
+    Consumers must deduplicate on `event_id` (UUID v4).
+
+    ## Publisher inventory (backend)
+
+    | event_type | Publisher |
+    |------------|-----------|
+    | `wallet.bet` | `BetWalletAction` |
+    | `wallet.win` | `WinWalletAction` |
+    | `wallet.rollback` | `RollbackWalletAction` |
+    | `payment.deposit` | `ConfirmDepositAction`, `ConfirmDepositFromProviderAction`, `AdminManualDepositAction` |
+    | `payment.withdraw` | `ApproveWithdrawalAction`, `AdminManualWithdrawAction` |
+    | `bonus.created` | `ApplyFirstDepositBonusAction`, `ClaimWelcomeBonusAction`, `ClaimFreeSpinAction` |
+    | `affiliate.commission` | `RecordAffiliateCommissionAction` |
+    | `notification.send` | *(consumer defined; publisher not implemented yet)* |
+
+defaultContentType: application/json
+
+servers:
+  production:
+    url: amqp://rabbitmq:5672
+    protocol: amqp
+    description: Production RabbitMQ broker
+    variables:
+      vhost:
+        default: /
+    bindings:
+      amqp:
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+  local:
+    url: amqp://127.0.0.1:5672
+    protocol: amqp
+    description: Local development
+    bindings:
+      amqp:
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+
+tags:
+  - name: wallet
+    description: Wallet ledger events from game and payment flows
+  - name: payment
+    description: Deposit and withdrawal lifecycle events
+  - name: bonus
+    description: Player bonus grant events
+  - name: affiliate
+    description: Affiliate commission events
+  - name: notification
+    description: Outbound notification dispatch requests
+
+channels:
+  wallet.bet:
+    description: Player bet debited from wallet after DB commit.
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishWalletBet
+      summary: Publish wallet.bet
+      tags:
+        - name: wallet
+      message:
+        $ref: '#/components/messages/WalletBetEvent'
+
+  wallet.win:
+    description: Player win credited to wallet after DB commit.
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishWalletWin
+      summary: Publish wallet.win
+      tags:
+        - name: wallet
+      message:
+        $ref: '#/components/messages/WalletWinEvent'
+
+  wallet.rollback:
+    description: Wallet transaction rolled back (game rollback, withdrawal rejection refund, etc.).
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishWalletRollback
+      summary: Publish wallet.rollback
+      tags:
+        - name: wallet
+      message:
+        $ref: '#/components/messages/WalletRollbackEvent'
+
+  payment.deposit:
+    description: Deposit completed and wallet credited.
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishPaymentDeposit
+      summary: Publish payment.deposit
+      tags:
+        - name: payment
+      message:
+        $ref: '#/components/messages/PaymentDepositEvent'
+
+  payment.withdraw:
+    description: Withdrawal approved and wallet debited.
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishPaymentWithdraw
+      summary: Publish payment.withdraw
+      tags:
+        - name: payment
+      message:
+        $ref: '#/components/messages/PaymentWithdrawEvent'
+
+  bonus.created:
+    description: Bonus granted to a player (cash credit or free spin package).
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishBonusCreated
+      summary: Publish bonus.created
+      tags:
+        - name: bonus
+      message:
+        $ref: '#/components/messages/BonusCreatedEvent'
+
+  affiliate.commission:
+    description: Affiliate commission recorded (often chained from deposit or bet consumers).
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishAffiliateCommission
+      summary: Publish affiliate.commission
+      tags:
+        - name: affiliate
+      message:
+        $ref: '#/components/messages/AffiliateCommissionEvent'
+
+  notification.send:
+    description: |
+      Request outbound notification delivery.
+      Consumer is implemented; direct publisher calls are not yet used by the backend
+      (deposit/withdraw/bonus events trigger notifications indirectly).
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishNotificationSend
+      summary: Publish notification.send
+      tags:
+        - name: notification
+      message:
+        $ref: '#/components/messages/NotificationSendEvent'
+
+components:
+  messages:
+    WalletBetEvent:
+      messageId: WalletBetEvent
+      name: WalletBetEvent
+      title: wallet.bet
+      summary: Wallet bet event envelope
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/WalletBetEnvelope'
+      examples:
+        - payload:
+            event_id: 550e8400-e29b-41d4-a716-446655440001
+            event_type: wallet.bet
+            occurred_at: '2026-06-21T10:30:00+00:00'
+            version: '1.0'
+            data:
+              player_id: 123
+              amount: '100.0000'
+              ledger_id: 789
+              reference_type: game_round
+              reference_id: round_abc123
+              metadata:
+                game_code: slot_01
+                game_hall: main
+
+    WalletWinEvent:
+      messageId: WalletWinEvent
+      name: WalletWinEvent
+      title: wallet.win
+      summary: Wallet win event envelope
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/WalletWinEnvelope'
+
+    WalletRollbackEvent:
+      messageId: WalletRollbackEvent
+      name: WalletRollbackEvent
+      title: wallet.rollback
+      summary: Wallet rollback event envelope
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/WalletRollbackEnvelope'
+
+    PaymentDepositEvent:
+      messageId: PaymentDepositEvent
+      name: PaymentDepositEvent
+      title: payment.deposit
+      summary: Payment deposit event envelope
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/PaymentDepositEnvelope'
+      examples:
+        - payload:
+            event_id: 550e8400-e29b-41d4-a716-446655440002
+            event_type: payment.deposit
+            occurred_at: '2026-06-21T11:00:00+00:00'
+            version: '1.0'
+            data:
+              player_id: 123
+              amount: '500.0000'
+              deposit_id: 45
+              ledger_id: 800
+              currency: USD
+
+    PaymentWithdrawEvent:
+      messageId: PaymentWithdrawEvent
+      name: PaymentWithdrawEvent
+      title: payment.withdraw
+      summary: Payment withdraw event envelope
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/PaymentWithdrawEnvelope'
+
+    BonusCreatedEvent:
+      messageId: BonusCreatedEvent
+      name: BonusCreatedEvent
+      title: bonus.created
+      summary: Bonus created event envelope
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/BonusCreatedEnvelope'
+      examples:
+        - payload:
+            event_id: 550e8400-e29b-41d4-a716-446655440003
+            event_type: bonus.created
+            occurred_at: '2026-06-21T12:00:00+00:00'
+            version: '1.0'
+            data:
+              player_id: 123
+              bonus_id: 57
+              amount: '20.0000'
+              type: free_spin
+              metadata:
+                provider_slug: gameboy
+                provider_bonus_id: gb_bonus_xyz
+                spin_count: 20
+                bet_level: 1
+                expire_days: 7
+
+    AffiliateCommissionEvent:
+      messageId: AffiliateCommissionEvent
+      name: AffiliateCommissionEvent
+      title: affiliate.commission
+      summary: Affiliate commission event envelope
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/AffiliateCommissionEnvelope'
+      examples:
+        - payload:
+            event_id: 550e8400-e29b-41d4-a716-446655440004
+            event_type: affiliate.commission
+            occurred_at: '2026-06-21T10:31:00+00:00'
+            version: '1.0'
+            data:
+              affiliate_id: 7
+              player_id: 123
+              commission_id: 99
+              amount: '25.0000'
+              type: revshare
+
+    NotificationSendEvent:
+      messageId: NotificationSendEvent
+      name: NotificationSendEvent
+      title: notification.send
+      summary: Notification send event envelope
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/NotificationSendEnvelope'
+
+  schemas:
+    DecimalAmount:
+      type: string
+      description: Non-negative monetary amount with exactly 4 decimal places.
+      pattern: '^\d+\.\d{4}$'
+      examples:
+        - '100.0000'
+        - '0.0100'
+
+    SignedDecimalAmount:
+      type: string
+      description: Signed monetary amount with exactly 4 decimal places.
+      pattern: '^-?\d+\.\d{4}$'
+      examples:
+        - '100.0000'
+        - '-100.0000'
+
+    CurrencyCode:
+      type: string
+      description: ISO 4217 currency code (wallet currency).
+      minLength: 3
+      maxLength: 3
+      examples:
+        - USD
+
+    EnvelopeVersion:
+      type: string
+      description: Envelope schema version published by the platform.
+      enum:
+        - '1.0'
+
+    WalletTransactionMetadata:
+      type: object
+      description: |
+        Provider-specific transaction metadata copied from game callbacks.
+        Keys vary by integration; additional properties are allowed.
+      additionalProperties: true
+      properties:
+        game_code:
+          type: string
+          description: Provider game identifier (GameBoy, GoldenGateX, SimplePlay).
+        game_hall:
+          type: string
+          description: GameBoy game hall identifier.
+        gamecode:
+          type: string
+          description: SimplePlay game code.
+        gameid:
+          type: string
+          description: SA Gaming / SimplePlay game id.
+        gametype:
+          type: string
+        hostid:
+          type: string
+        platform:
+          type: string
+        ip:
+          type: string
+        txnid:
+          type: string
+          description: Provider transaction id (SA Gaming, SimplePlay).
+        txn_reverse_id:
+          type: string
+        history_id:
+          type: string
+          description: GoldenGateX history id.
+        vendor_code:
+          type: string
+        game_type:
+          type: string
+        transaction_code:
+          type: string
+        betdetails:
+          type: object
+          additionalProperties: true
+        payoutdetails:
+          type: object
+          additionalProperties: true
+        jackpot_contribution:
+          type: string
+        original_idempotency_key:
+          type: string
+          description: Present on rollback metadata from GoldenGateX.
+
+    WalletBetData:
+      type: object
+      required:
+        - player_id
+        - amount
+        - ledger_id
+        - reference_type
+        - reference_id
+      properties:
+        player_id:
+          type: integer
+          minimum: 1
+        amount:
+          $ref: '#/components/schemas/DecimalAmount'
+        ledger_id:
+          type: integer
+          minimum: 1
+        reference_type:
+          type: string
+          description: Ledger reference type.
+          default: game_round
+          examples:
+            - game_round
+        reference_id:
+          type: string
+          description: Round or transaction identifier (e.g. provider round id).
+        metadata:
+          $ref: '#/components/schemas/WalletTransactionMetadata'
+
+    WalletWinData:
+      type: object
+      required:
+        - player_id
+        - amount
+        - ledger_id
+        - reference_type
+        - reference_id
+      properties:
+        player_id:
+          type: integer
+          minimum: 1
+        amount:
+          $ref: '#/components/schemas/DecimalAmount'
+        ledger_id:
+          type: integer
+          minimum: 1
+        reference_type:
+          type: string
+          default: game_round
+        reference_id:
+          type: string
+        metadata:
+          $ref: '#/components/schemas/WalletTransactionMetadata'
+
+    WalletRollbackData:
+      type: object
+      required:
+        - player_id
+        - amount
+        - ledger_id
+        - original_ledger_id
+        - reference_type
+        - reference_id
+      properties:
+        player_id:
+          type: integer
+          minimum: 1
+        amount:
+          $ref: '#/components/schemas/SignedDecimalAmount'
+        ledger_id:
+          type: integer
+          minimum: 1
+        original_ledger_id:
+          type: integer
+          minimum: 1
+        reference_type:
+          type: string
+          default: game_round
+          examples:
+            - game_round
+            - withdrawal
+        reference_id:
+          type: string
+
+    PaymentDepositData:
+      type: object
+      required:
+        - player_id
+        - amount
+        - deposit_id
+        - ledger_id
+        - currency
+      properties:
+        player_id:
+          type: integer
+          minimum: 1
+        amount:
+          $ref: '#/components/schemas/DecimalAmount'
+          description: Amount credited to the player wallet (after FX if applicable).
+        deposit_id:
+          type: integer
+          minimum: 1
+        ledger_id:
+          type: integer
+          minimum: 1
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+
+    PaymentWithdrawData:
+      type: object
+      required:
+        - player_id
+        - amount
+        - withdrawal_id
+        - ledger_id
+        - currency
+      properties:
+        player_id:
+          type: integer
+          minimum: 1
+        amount:
+          $ref: '#/components/schemas/DecimalAmount'
+        withdrawal_id:
+          type: integer
+          minimum: 1
+        ledger_id:
+          type: integer
+          minimum: 1
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+
+    BonusType:
+      type: string
+      description: Bonus policy type when explicitly set (e.g. free spin grants).
+      enum:
+        - welcome
+        - first_deposit
+        - cashback
+        - free_spin
+        - daily
+        - vip
+
+    FreeSpinBonusMetadata:
+      type: object
+      required:
+        - provider_slug
+        - provider_bonus_id
+        - spin_count
+        - bet_level
+        - expire_days
+      properties:
+        provider_slug:
+          type: string
+          examples:
+            - gameboy
+        provider_bonus_id:
+          type: string
+        spin_count:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        bet_level:
+          type: integer
+          minimum: 1
+          maximum: 100
+        expire_days:
+          type: integer
+          minimum: 1
+          maximum: 30
+
+    BonusCreatedData:
+      type: object
+      required:
+        - player_id
+        - bonus_id
+        - amount
+      properties:
+        player_id:
+          type: integer
+          minimum: 1
+        bonus_id:
+          type: integer
+          minimum: 1
+          description: Player bonus record id (player_bonuses.id).
+        amount:
+          $ref: '#/components/schemas/DecimalAmount'
+          description: Bonus cash amount or free-spin count (formatted as decimal string).
+        ledger_id:
+          type: integer
+          minimum: 1
+          description: Wallet ledger id when bonus credits the wallet. Omitted for free spins.
+        type:
+          $ref: '#/components/schemas/BonusType'
+        metadata:
+          $ref: '#/components/schemas/FreeSpinBonusMetadata'
+
+    CommissionType:
+      type: string
+      enum:
+        - cpa
+        - revshare
+        - override
+
+    AffiliateCommissionData:
+      type: object
+      required:
+        - affiliate_id
+        - player_id
+        - commission_id
+        - amount
+        - type
+      properties:
+        affiliate_id:
+          type: integer
+          minimum: 1
+        player_id:
+          type: integer
+          minimum: 1
+        commission_id:
+          type: integer
+          minimum: 1
+        amount:
+          $ref: '#/components/schemas/DecimalAmount'
+        type:
+          $ref: '#/components/schemas/CommissionType'
+
+    NotificationChannel:
+      type: string
+      description: |
+        Delivery channel. Backend currently implements `email` and `internal`;
+        other values are reserved for future adapters.
+      enum:
+        - email
+        - internal
+        - sms
+        - telegram
+        - discord
+
+    NotificationSendData:
+      type: object
+      required:
+        - channel
+        - template
+      properties:
+        channel:
+          $ref: '#/components/schemas/NotificationChannel'
+        template:
+          type: string
+          description: Notification template slug (e.g. `deposit_confirmed`).
+        player_id:
+          type: integer
+          minimum: 1
+          description: Target player for channels that resolve recipient from profile.
+        data:
+          type: object
+          description: Template variables passed to the notification adapter.
+          additionalProperties: true
+
+    PlatformEventEnvelopeBase:
+      type: object
+      required:
+        - event_id
+        - event_type
+        - occurred_at
+        - version
+        - data
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: Unique event id for idempotent consumption.
+        event_type:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the business fact occurred.
+        version:
+          $ref: '#/components/schemas/EnvelopeVersion'
+        data:
+          type: object
+
+    WalletBetEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/PlatformEventEnvelopeBase'
+        - type: object
+          properties:
+            event_type:
+              const: wallet.bet
+            data:
+              $ref: '#/components/schemas/WalletBetData'
+
+    WalletWinEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/PlatformEventEnvelopeBase'
+        - type: object
+          properties:
+            event_type:
+              const: wallet.win
+            data:
+              $ref: '#/components/schemas/WalletWinData'
+
+    WalletRollbackEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/PlatformEventEnvelopeBase'
+        - type: object
+          properties:
+            event_type:
+              const: wallet.rollback
+            data:
+              $ref: '#/components/schemas/WalletRollbackData'
+
+    PaymentDepositEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/PlatformEventEnvelopeBase'
+        - type: object
+          properties:
+            event_type:
+              const: payment.deposit
+            data:
+              $ref: '#/components/schemas/PaymentDepositData'
+
+    PaymentWithdrawEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/PlatformEventEnvelopeBase'
+        - type: object
+          properties:
+            event_type:
+              const: payment.withdraw
+            data:
+              $ref: '#/components/schemas/PaymentWithdrawData'
+
+    BonusCreatedEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/PlatformEventEnvelopeBase'
+        - type: object
+          properties:
+            event_type:
+              const: bonus.created
+            data:
+              $ref: '#/components/schemas/BonusCreatedData'
+
+    AffiliateCommissionEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/PlatformEventEnvelopeBase'
+        - type: object
+          properties:
+            event_type:
+              const: affiliate.commission
+            data:
+              $ref: '#/components/schemas/AffiliateCommissionData'
+
+    NotificationSendEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/PlatformEventEnvelopeBase'
+        - type: object
+          properties:
+            event_type:
+              const: notification.send
+            data:
+              $ref: '#/components/schemas/NotificationSendData'

@@ -18,6 +18,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run bundle
+      - name: Validate platform events contract
+        run: npm run lint:events
 
   breaking-changes:
     if: github.event_name == 'pull_request'
