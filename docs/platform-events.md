@@ -18,6 +18,19 @@ RabbitMQ message schemas for integration between the Casino Platform and externa
 | `bonus.completed` | `bonus.completed` | `player_id`, `bonus_id`, `amount` (+ optional `ledger_id`, `type`, `metadata`, `wagering`, `spin_count`, `spins_used`) |
 | `affiliate.commission` | `affiliate.commission` | `affiliate_id`, `player_id`, `commission_id`, `amount`, `type` |
 | `notification.send` | `notification.send` | `channel`, `template` (+ optional `player_id`, `data`) |
+| `login_success` | `login_success` | `audit_event`, `channel` (+ optional `user_id`, `identifier`, `ip_address`, `user_agent`, `metadata`, `afs`) |
+| `login_failed` | `login_failed` | same as `login_success` |
+| `login_lockout` | `login_lockout` | same as `login_success` |
+| `refresh_success` | `refresh_success` | same as `login_success` |
+| `refresh_failed` | `refresh_failed` | same as `login_success` |
+| `refresh_token_reuse` | `refresh_token_reuse` | same as `login_success` |
+| `admin_login_success` | `admin_login_success` | same as `login_success` |
+| `admin_login_failed` | `admin_login_failed` | same as `login_success` |
+| `admin_login_lockout` | `admin_login_lockout` | same as `login_success` |
+| `security_settings_updated` | `security_settings_updated` | same as `login_success` |
+| `auth.signup` | `auth.signup` | `player_id`, `user_id`, `email`, `country`, `currency` (+ optional `phone`, `affiliate_code`, `ip_address`, `user_agent`, `afs`) |
+
+Security audit events use **the audit event name as both routing key and `event_type`**. `data.audit_event` must match `event_type`. Player login events may include optional `afs` for AFS canonical mapping.
 
 Every message uses the same envelope:
 
@@ -28,6 +41,29 @@ Every message uses the same envelope:
   "occurred_at": "2026-06-21T10:30:00+00:00",
   "version": "1.0",
   "data": { }
+}
+```
+
+Example security audit message:
+
+```json
+{
+  "event_id": "550e8400-e29b-41d4-a716-446655440099",
+  "event_type": "login_failed",
+  "occurred_at": "2026-06-21T10:30:00+00:00",
+  "version": "1.0",
+  "data": {
+    "audit_event": "login_failed",
+    "channel": "player",
+    "user_id": 123,
+    "ip_address": "10.0.0.1",
+    "afs": {
+      "event_type": "login_failed",
+      "user": { "user_id": "123" },
+      "context": { "ip": "10.0.0.1" },
+      "metadata": { "channel": "web", "failure_reason": "invalid_credentials" }
+    }
+  }
 }
 ```
 
@@ -44,7 +80,7 @@ Binding:  #   (all platform events)
 Or bind only the namespaces you need:
 
 ```
-wallet.#, payment.#, bonus.#, affiliate.#, notification.#
+wallet.#, payment.#, bonus.#, affiliate.#, notification.#, auth.#, login_success, login_failed, login_lockout, refresh_success, refresh_failed, refresh_token_reuse, admin_login_success, admin_login_failed, admin_login_lockout, security_settings_updated
 ```
 
 ## Change workflow

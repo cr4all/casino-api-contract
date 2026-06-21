@@ -6,6 +6,32 @@ Format follows [Semantic Versioning](https://semver.org/).
 
 ## Platform Events
 
+### [platform-events-1.5.0] - 2026-06-21
+
+**Spec:** `asyncapi/platform-events-v1.yaml`
+
+**Changed (breaking for AFS security consumers):**
+
+- Security audit events no longer use routing key / `event_type` `security.audit`
+- Each audit event is published with its own routing key: `login_success`, `login_failed`, `login_lockout`, `refresh_success`, `refresh_failed`, `refresh_token_reuse`, `admin_login_success`, `admin_login_failed`, `admin_login_lockout`, `security_settings_updated`
+- Envelope `event_type` and `data.audit_event` must match the routing key
+
+### [platform-events-1.4.0] - 2026-06-21
+
+**Spec:** `asyncapi/platform-events-v1.yaml`
+
+**Added:**
+
+- `auth.signup` — player registration completed (RegisterUserAction)
+
+### [platform-events-1.3.0] - 2026-06-21
+
+**Spec:** `asyncapi/platform-events-v1.yaml`
+
+**Added:**
+
+- `security.audit` — superseded in 1.5.0 by per-event routing keys (see 1.5.0 changelog)
+
 ### [platform-events-1.2.0] - 2026-06-21
 
 **Spec:** `asyncapi/platform-events-v1.yaml`

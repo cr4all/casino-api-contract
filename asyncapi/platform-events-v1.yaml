@@ -2,7 +2,7 @@ asyncapi: '2.6.0'
 id: urn:cr4all:casino:platform-events:v1
 info:
   title: Casino Platform Events
-  version: 1.2.0
+  version: 1.5.0
   description: |
     RabbitMQ event contract between the Casino Platform and external systems (e.g. AFS).
 
@@ -56,6 +56,17 @@ info:
     | `bonus.completed` | `CompletePlayerBonusAction` |
     | `affiliate.commission` | `RecordAffiliateCommissionAction` |
     | `notification.send` | *(consumer defined; publisher not implemented yet)* |
+    | `login_success` | `SecurityAuditLogService` |
+    | `login_failed` | `SecurityAuditLogService` |
+    | `login_lockout` | `SecurityAuditLogService` |
+    | `refresh_success` | `SecurityAuditLogService` |
+    | `refresh_failed` | `SecurityAuditLogService` |
+    | `refresh_token_reuse` | `SecurityAuditLogService` |
+    | `admin_login_success` | `SecurityAuditLogService` |
+    | `admin_login_failed` | `SecurityAuditLogService` |
+    | `admin_login_lockout` | `SecurityAuditLogService` |
+    | `security_settings_updated` | `SecurityAuditLogService` |
+    | `auth.signup` | `RegisterUserAction` |
 
 defaultContentType: application/json
 
@@ -97,6 +108,10 @@ tags:
     description: Affiliate commission events
   - name: notification
     description: Outbound notification dispatch requests
+  - name: security
+    description: Authentication and security audit events for AFS
+  - name: auth
+    description: Player registration and authentication lifecycle events
 
 channels:
   wallet.bet:
@@ -282,6 +297,206 @@ channels:
       message:
         $ref: '#/components/messages/NotificationSendEvent'
 
+  login_success:
+    description: Player login succeeded (security audit). Routing key equals `event_type`.
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishLoginSuccess
+      summary: Publish login_success
+      tags:
+        - name: security
+      message:
+        $ref: '#/components/messages/SecurityAuditLoginSuccessEvent'
+
+  login_failed:
+    description: Player login failed (security audit). Routing key equals `event_type`.
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishLoginFailed
+      summary: Publish login_failed
+      tags:
+        - name: security
+      message:
+        $ref: '#/components/messages/SecurityAuditLoginFailedEvent'
+
+  login_lockout:
+    description: Player login lockout (security audit). Routing key equals `event_type`.
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishLoginLockout
+      summary: Publish login_lockout
+      tags:
+        - name: security
+      message:
+        $ref: '#/components/messages/SecurityAuditLoginLockoutEvent'
+
+  refresh_success:
+    description: Refresh token succeeded (security audit). Routing key equals `event_type`.
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishRefreshSuccess
+      summary: Publish refresh_success
+      tags:
+        - name: security
+      message:
+        $ref: '#/components/messages/SecurityAuditRefreshSuccessEvent'
+
+  refresh_failed:
+    description: Refresh token failed (security audit). Routing key equals `event_type`.
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishRefreshFailed
+      summary: Publish refresh_failed
+      tags:
+        - name: security
+      message:
+        $ref: '#/components/messages/SecurityAuditRefreshFailedEvent'
+
+  refresh_token_reuse:
+    description: Refresh token reuse detected (security audit). Routing key equals `event_type`.
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishRefreshTokenReuse
+      summary: Publish refresh_token_reuse
+      tags:
+        - name: security
+      message:
+        $ref: '#/components/messages/SecurityAuditRefreshTokenReuseEvent'
+
+  admin_login_success:
+    description: Admin login succeeded (security audit). Routing key equals `event_type`.
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishAdminLoginSuccess
+      summary: Publish admin_login_success
+      tags:
+        - name: security
+      message:
+        $ref: '#/components/messages/SecurityAuditAdminLoginSuccessEvent'
+
+  admin_login_failed:
+    description: Admin login failed (security audit). Routing key equals `event_type`.
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishAdminLoginFailed
+      summary: Publish admin_login_failed
+      tags:
+        - name: security
+      message:
+        $ref: '#/components/messages/SecurityAuditAdminLoginFailedEvent'
+
+  admin_login_lockout:
+    description: Admin login lockout (security audit). Routing key equals `event_type`.
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishAdminLoginLockout
+      summary: Publish admin_login_lockout
+      tags:
+        - name: security
+      message:
+        $ref: '#/components/messages/SecurityAuditAdminLoginLockoutEvent'
+
+  security_settings_updated:
+    description: Security settings updated by admin (security audit). Routing key equals `event_type`.
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishSecuritySettingsUpdated
+      summary: Publish security_settings_updated
+      tags:
+        - name: security
+      message:
+        $ref: '#/components/messages/SecurityAuditSettingsUpdatedEvent'
+
+  auth.signup:
+    description: |
+      Player registration completed after DB commit.
+      Published from `RegisterUserAction` after user, player, and wallet are created.
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishAuthSignup
+      summary: Publish auth.signup
+      tags:
+        - name: auth
+      message:
+        $ref: '#/components/messages/AuthSignupEvent'
+
 components:
   messages:
     WalletBetEvent:
@@ -459,6 +674,159 @@ components:
       contentType: application/json
       payload:
         $ref: '#/components/schemas/NotificationSendEnvelope'
+
+    SecurityAuditLoginSuccessEvent:
+      messageId: SecurityAuditLoginSuccessEvent
+      name: SecurityAuditLoginSuccessEvent
+      title: login_success
+      summary: Player login succeeded (security audit).
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/SecurityAuditEnvelope'
+
+    SecurityAuditLoginFailedEvent:
+      messageId: SecurityAuditLoginFailedEvent
+      name: SecurityAuditLoginFailedEvent
+      title: login_failed
+      summary: |
+        Player login failed (security audit). Routing key and `event_type` are `login_failed`.
+        `data.audit_event` must equal `event_type`.
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/SecurityAuditEnvelope'
+      examples:
+        - payload:
+            event_id: 550e8400-e29b-41d4-a716-446655440099
+            event_type: login_failed
+            occurred_at: '2026-06-21T10:30:00+00:00'
+            version: '1.0'
+            data:
+              audit_event: login_failed
+              channel: player
+              user_id: 123
+              identifier: m***@example.com
+              ip_address: 10.0.0.1
+              user_agent: Mozilla/5.0
+              metadata:
+                reason: account_not_active
+              afs:
+                event_type: login_failed
+                user:
+                  user_id: '123'
+                  email: null
+                context:
+                  ip: 10.0.0.1
+                  user_agent: Mozilla/5.0
+                metadata:
+                  channel: web
+                  failure_reason: account_not_active
+
+    SecurityAuditLoginLockoutEvent:
+      messageId: SecurityAuditLoginLockoutEvent
+      name: SecurityAuditLoginLockoutEvent
+      title: login_lockout
+      summary: Player login lockout (security audit).
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/SecurityAuditEnvelope'
+
+    SecurityAuditRefreshSuccessEvent:
+      messageId: SecurityAuditRefreshSuccessEvent
+      name: SecurityAuditRefreshSuccessEvent
+      title: refresh_success
+      summary: Refresh token succeeded (security audit).
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/SecurityAuditEnvelope'
+
+    SecurityAuditRefreshFailedEvent:
+      messageId: SecurityAuditRefreshFailedEvent
+      name: SecurityAuditRefreshFailedEvent
+      title: refresh_failed
+      summary: Refresh token failed (security audit).
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/SecurityAuditEnvelope'
+
+    SecurityAuditRefreshTokenReuseEvent:
+      messageId: SecurityAuditRefreshTokenReuseEvent
+      name: SecurityAuditRefreshTokenReuseEvent
+      title: refresh_token_reuse
+      summary: Refresh token reuse detected (security audit).
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/SecurityAuditEnvelope'
+
+    SecurityAuditAdminLoginSuccessEvent:
+      messageId: SecurityAuditAdminLoginSuccessEvent
+      name: SecurityAuditAdminLoginSuccessEvent
+      title: admin_login_success
+      summary: Admin login succeeded (security audit).
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/SecurityAuditEnvelope'
+
+    SecurityAuditAdminLoginFailedEvent:
+      messageId: SecurityAuditAdminLoginFailedEvent
+      name: SecurityAuditAdminLoginFailedEvent
+      title: admin_login_failed
+      summary: Admin login failed (security audit).
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/SecurityAuditEnvelope'
+
+    SecurityAuditAdminLoginLockoutEvent:
+      messageId: SecurityAuditAdminLoginLockoutEvent
+      name: SecurityAuditAdminLoginLockoutEvent
+      title: admin_login_lockout
+      summary: Admin login lockout (security audit).
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/SecurityAuditEnvelope'
+
+    SecurityAuditSettingsUpdatedEvent:
+      messageId: SecurityAuditSettingsUpdatedEvent
+      name: SecurityAuditSettingsUpdatedEvent
+      title: security_settings_updated
+      summary: Security settings updated by admin (security audit).
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/SecurityAuditEnvelope'
+
+    AuthSignupEvent:
+      messageId: AuthSignupEvent
+      name: AuthSignupEvent
+      title: auth.signup
+      summary: Player registration event envelope
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/AuthSignupEnvelope'
+      examples:
+        - payload:
+            event_id: 550e8400-e29b-41d4-a716-446655440100
+            event_type: auth.signup
+            occurred_at: '2026-06-21T10:30:00+00:00'
+            version: '1.0'
+            data:
+              player_id: 456
+              user_id: 123
+              email: player@example.com
+              phone: '+12025551234'
+              country: US
+              currency: USD
+              ip_address: 10.0.0.1
+              user_agent: Mozilla/5.0
+              afs:
+                event_type: signup
+                user:
+                  user_id: '123'
+                  email: player@example.com
+                  phone: '+12025551234'
+                context:
+                  ip: 10.0.0.1
+                  user_agent: Mozilla/5.0
+                metadata:
+                  channel: web
 
   schemas:
     DecimalAmount:
@@ -883,6 +1251,193 @@ components:
           description: Template variables passed to the notification adapter.
           additionalProperties: true
 
+    SecurityAuditEventType:
+      type: string
+      description: Security audit event slug (matches `security_audit_logs.event`).
+      enum:
+        - login_success
+        - login_failed
+        - login_lockout
+        - refresh_success
+        - refresh_failed
+        - refresh_token_reuse
+        - admin_login_success
+        - admin_login_failed
+        - admin_login_lockout
+        - security_settings_updated
+
+    SecurityAuditChannel:
+      type: string
+      enum:
+        - player
+        - admin
+
+    AfsCanonicalEventType:
+      type: string
+      description: AFS canonical event type for player auth events.
+      enum:
+        - signup
+        - login
+        - login_failed
+
+    AfsUser:
+      type: object
+      required:
+        - user_id
+      properties:
+        user_id:
+          type: string
+        email:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        name:
+          type: string
+          nullable: true
+
+    AfsContext:
+      type: object
+      properties:
+        ip:
+          type: string
+          nullable: true
+        country:
+          type: string
+          nullable: true
+        fingerprint:
+          type: string
+          nullable: true
+        fingerprint_version:
+          type: string
+          nullable: true
+        user_agent:
+          type: string
+          nullable: true
+        device_id:
+          type: string
+          nullable: true
+        browser_language:
+          type: string
+          nullable: true
+        timezone:
+          type: string
+          nullable: true
+        platform:
+          type: string
+          nullable: true
+        screen_resolution:
+          type: string
+          nullable: true
+
+    AfsMetadata:
+      type: object
+      properties:
+        channel:
+          type: string
+          nullable: true
+          enum:
+            - web
+            - mobile
+            - api
+            - null
+        session_id:
+          type: string
+          nullable: true
+        referrer:
+          type: string
+          nullable: true
+        failure_reason:
+          type: string
+          nullable: true
+
+    AfsCanonicalPayload:
+      type: object
+      description: |
+        Optional AFS canonical event subset for player auth events (signup, login).
+        Omitted for admin, refresh, and settings audit events.
+      required:
+        - event_type
+        - user
+        - context
+      properties:
+        event_type:
+          $ref: '#/components/schemas/AfsCanonicalEventType'
+        user:
+          $ref: '#/components/schemas/AfsUser'
+        context:
+          $ref: '#/components/schemas/AfsContext'
+        metadata:
+          $ref: '#/components/schemas/AfsMetadata'
+
+    SecurityAuditData:
+      type: object
+      required:
+        - audit_event
+        - channel
+      description: |
+        Security audit payload. `audit_event` must match the envelope `event_type`
+        and AMQP routing key.
+      properties:
+        audit_event:
+          $ref: '#/components/schemas/SecurityAuditEventType'
+        channel:
+          $ref: '#/components/schemas/SecurityAuditChannel'
+        user_id:
+          type: integer
+          minimum: 1
+          description: Platform user id when known.
+        identifier:
+          type: string
+          description: Masked email, phone, or username.
+        ip_address:
+          type: string
+        user_agent:
+          type: string
+        metadata:
+          type: object
+          description: Event-specific context (e.g. failure reason, settings diff).
+          additionalProperties: true
+        afs:
+          $ref: '#/components/schemas/AfsCanonicalPayload'
+
+    AuthSignupData:
+      type: object
+      required:
+        - player_id
+        - user_id
+        - email
+        - country
+        - currency
+      properties:
+        player_id:
+          type: integer
+          minimum: 1
+        user_id:
+          type: integer
+          minimum: 1
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        country:
+          type: string
+          minLength: 2
+          maxLength: 2
+          description: ISO 3166-1 alpha-2 country code.
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        affiliate_code:
+          type: string
+        ip_address:
+          type: string
+        user_agent:
+          type: string
+        afs:
+          $ref: '#/components/schemas/AfsCanonicalPayload'
+
     PlatformEventEnvelopeBase:
       type: object
       required:
@@ -1006,3 +1561,23 @@ components:
               const: notification.send
             data:
               $ref: '#/components/schemas/NotificationSendData'
+
+    SecurityAuditEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/PlatformEventEnvelopeBase'
+        - type: object
+          properties:
+            event_type:
+              $ref: '#/components/schemas/SecurityAuditEventType'
+            data:
+              $ref: '#/components/schemas/SecurityAuditData'
+
+    AuthSignupEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/PlatformEventEnvelopeBase'
+        - type: object
+          properties:
+            event_type:
+              const: auth.signup
+            data:
+              $ref: '#/components/schemas/AuthSignupData'
