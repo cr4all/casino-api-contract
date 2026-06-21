@@ -1627,6 +1627,10 @@ components:
         funding_source:
           type: string
           enum: [cash, free_spin]
+          description: Spin funding source — cash wallet or free spin bonus.
+        spin_type:
+          type: string
+          description: Human-readable spin type label (e.g. Cash Spin, Free Spin).
         currency:
           type: string
         played_at:
@@ -1920,7 +1924,7 @@ components:
         claim_blocked_reason:
           type: string
           nullable: true
-          enum: [deposit_required, already_claimed, provider_not_supported]
+          enum: [deposit_required, deposit_after_valid_from_required, already_claimed, provider_not_supported]
         spin_count:
           type: integer
           nullable: true
