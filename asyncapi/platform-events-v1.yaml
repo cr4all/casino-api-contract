@@ -2,7 +2,7 @@ asyncapi: '2.6.0'
 id: urn:cr4all:casino:platform-events:v1
 info:
   title: Casino Platform Events
-  version: 1.0.0
+  version: 1.2.0
   description: |
     RabbitMQ event contract between the Casino Platform and external systems (e.g. AFS).
 
@@ -35,7 +35,7 @@ info:
     ## Amount conventions
 
     - Monetary values are **strings** with exactly 4 decimal places (`DecimalAmount`).
-    - `wallet.bet`, `wallet.win`, `payment.*`, `bonus.created`, `affiliate.commission`: positive absolute values.
+    - `wallet.bet`, `wallet.win`, `payment.*`, `bonus.created`, `bonus.completed`, `affiliate.commission`: positive absolute values.
     - `wallet.rollback`: signed ledger amount (may be negative).
 
     ## Idempotency
@@ -49,9 +49,11 @@ info:
     | `wallet.bet` | `BetWalletAction` |
     | `wallet.win` | `WinWalletAction` |
     | `wallet.rollback` | `RollbackWalletAction` |
+    | `game.bet` | `ProcessGameBoyCallbackAction` (free spin bets without wallet debit) |
     | `payment.deposit` | `ConfirmDepositAction`, `ConfirmDepositFromProviderAction`, `AdminManualDepositAction` |
     | `payment.withdraw` | `ApproveWithdrawalAction`, `AdminManualWithdrawAction` |
     | `bonus.created` | `ApplyFirstDepositBonusAction`, `ClaimWelcomeBonusAction`, `ClaimFreeSpinAction` |
+    | `bonus.completed` | `CompletePlayerBonusAction` |
     | `affiliate.commission` | `RecordAffiliateCommissionAction` |
     | `notification.send` | *(consumer defined; publisher not implemented yet)* |
 
@@ -85,6 +87,8 @@ servers:
 tags:
   - name: wallet
     description: Wallet ledger events from game and payment flows
+  - name: game
+    description: Game round analytics events (non-wallet bet funding)
   - name: payment
     description: Deposit and withdrawal lifecycle events
   - name: bonus
@@ -149,6 +153,24 @@ channels:
       message:
         $ref: '#/components/messages/WalletRollbackEvent'
 
+  game.bet:
+    description: Game bet recorded for analytics when wallet is not debited (e.g. free spin).
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishGameBet
+      summary: Publish game.bet
+      tags:
+        - name: game
+      message:
+        $ref: '#/components/messages/GameBetEvent'
+
   payment.deposit:
     description: Deposit completed and wallet credited.
     bindings:
@@ -202,6 +224,24 @@ channels:
         - name: bonus
       message:
         $ref: '#/components/messages/BonusCreatedEvent'
+
+  bonus.completed:
+    description: Player bonus requirements fulfilled (wagering met or free spins exhausted).
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: casino.events
+          type: topic
+          durable: true
+        bindingVersion: 0.2.0
+    publish:
+      operationId: publishBonusCompleted
+      summary: Publish bonus.completed
+      tags:
+        - name: bonus
+      message:
+        $ref: '#/components/messages/BonusCompletedEvent'
 
   affiliate.commission:
     description: Affiliate commission recorded (often chained from deposit or bet consumers).
@@ -267,6 +307,7 @@ components:
               metadata:
                 game_code: slot_01
                 game_hall: main
+              funding_source: cash
 
     WalletWinEvent:
       messageId: WalletWinEvent
@@ -285,6 +326,29 @@ components:
       contentType: application/json
       payload:
         $ref: '#/components/schemas/WalletRollbackEnvelope'
+
+    GameBetEvent:
+      messageId: GameBetEvent
+      name: GameBetEvent
+      title: game.bet
+      summary: Game bet event envelope (non-wallet funding)
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/GameBetEnvelope'
+      examples:
+        - payload:
+            event_id: 550e8400-e29b-41d4-a716-446655440010
+            event_type: game.bet
+            occurred_at: '2026-06-21T10:30:00+00:00'
+            version: '1.0'
+            data:
+              player_id: 123
+              amount: '100.0000'
+              reference_type: game_round
+              reference_id: '20001'
+              funding_source: free_spin
+              metadata:
+                game_code: '1001'
 
     PaymentDepositEvent:
       messageId: PaymentDepositEvent
@@ -341,6 +405,30 @@ components:
                 spin_count: 20
                 bet_level: 1
                 expire_days: 7
+
+    BonusCompletedEvent:
+      messageId: BonusCompletedEvent
+      name: BonusCompletedEvent
+      title: bonus.completed
+      summary: Bonus completed event envelope
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/BonusCompletedEnvelope'
+      examples:
+        - payload:
+            event_id: 550e8400-e29b-41d4-a716-446655440010
+            event_type: bonus.completed
+            occurred_at: '2026-06-21T14:00:00+00:00'
+            version: '1.0'
+            data:
+              player_id: 123
+              bonus_id: 57
+              amount: '500.0000'
+              type: first_deposit
+              ledger_id: 801
+              wagering:
+                required: '15000.0000'
+                wagered: '15000.0000'
 
     AffiliateCommissionEvent:
       messageId: AffiliateCommissionEvent
@@ -482,6 +570,8 @@ components:
         reference_id:
           type: string
           description: Round or transaction identifier (e.g. provider round id).
+        funding_source:
+          $ref: '#/components/schemas/BetFundingSource'
         metadata:
           $ref: '#/components/schemas/WalletTransactionMetadata'
 
@@ -507,6 +597,8 @@ components:
           default: game_round
         reference_id:
           type: string
+        funding_source:
+          $ref: '#/components/schemas/BetFundingSource'
         metadata:
           $ref: '#/components/schemas/WalletTransactionMetadata'
 
@@ -539,6 +631,38 @@ components:
             - withdrawal
         reference_id:
           type: string
+
+    BetFundingSource:
+      type: string
+      description: Source of funds for a bet or related win.
+      enum:
+        - cash
+        - free_spin
+      default: cash
+
+    GameBetData:
+      type: object
+      required:
+        - player_id
+        - amount
+        - reference_type
+        - reference_id
+        - funding_source
+      properties:
+        player_id:
+          type: integer
+          minimum: 1
+        amount:
+          $ref: '#/components/schemas/DecimalAmount'
+        reference_type:
+          type: string
+          default: game_round
+        reference_id:
+          type: string
+        funding_source:
+          $ref: '#/components/schemas/BetFundingSource'
+        metadata:
+          $ref: '#/components/schemas/WalletTransactionMetadata'
 
     PaymentDepositData:
       type: object
@@ -652,6 +776,51 @@ components:
         metadata:
           $ref: '#/components/schemas/FreeSpinBonusMetadata'
 
+    BonusWageringProgress:
+      type: object
+      required:
+        - required
+        - wagered
+      properties:
+        required:
+          $ref: '#/components/schemas/DecimalAmount'
+        wagered:
+          $ref: '#/components/schemas/DecimalAmount'
+
+    BonusCompletedData:
+      type: object
+      required:
+        - player_id
+        - bonus_id
+        - amount
+      properties:
+        player_id:
+          type: integer
+          minimum: 1
+        bonus_id:
+          type: integer
+          minimum: 1
+          description: Player bonus record id (player_bonuses.id).
+        amount:
+          $ref: '#/components/schemas/DecimalAmount'
+          description: Final bonus cash amount or accumulated free-spin winnings.
+        ledger_id:
+          type: integer
+          minimum: 1
+          description: Wallet ledger id when bonus credits the wallet. Omitted for free spins.
+        type:
+          $ref: '#/components/schemas/BonusType'
+        metadata:
+          $ref: '#/components/schemas/FreeSpinBonusMetadata'
+        wagering:
+          $ref: '#/components/schemas/BonusWageringProgress'
+        spin_count:
+          type: integer
+          minimum: 1
+        spins_used:
+          type: integer
+          minimum: 0
+
     CommissionType:
       type: string
       enum:
@@ -758,6 +927,16 @@ components:
             data:
               $ref: '#/components/schemas/WalletWinData'
 
+    GameBetEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/PlatformEventEnvelopeBase'
+        - type: object
+          properties:
+            event_type:
+              const: game.bet
+            data:
+              $ref: '#/components/schemas/GameBetData'
+
     WalletRollbackEnvelope:
       allOf:
         - $ref: '#/components/schemas/PlatformEventEnvelopeBase'
@@ -797,6 +976,16 @@ components:
               const: bonus.created
             data:
               $ref: '#/components/schemas/BonusCreatedData'
+
+    BonusCompletedEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/PlatformEventEnvelopeBase'
+        - type: object
+          properties:
+            event_type:
+              const: bonus.completed
+            data:
+              $ref: '#/components/schemas/BonusCompletedData'
 
     AffiliateCommissionEnvelope:
       allOf:

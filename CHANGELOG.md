@@ -6,6 +6,23 @@ Format follows [Semantic Versioning](https://semver.org/).
 
 ## Platform Events
 
+### [platform-events-1.2.0] - 2026-06-21
+
+**Spec:** `asyncapi/platform-events-v1.yaml`
+
+**Added:**
+
+- `bonus.completed` — player bonus requirements fulfilled (wagering met or free spins exhausted)
+
+### [platform-events-1.1.0] - 2026-06-19
+
+**Spec:** `asyncapi/platform-events-v1.yaml`
+
+**Added:**
+
+- `game.bet` — analytics event for bets that do not debit the wallet (e.g. free spin)
+- Optional `funding_source` (`cash` | `free_spin`) on `wallet.bet` and `wallet.win` payloads
+
 ### [platform-events-1.0.0] - 2026-06-21
 
 Initial RabbitMQ event contract for Casino Platform ↔ AFS integration.

@@ -1089,6 +1089,11 @@ paths:
           schema:
             type: string
             format: date-time
+        - name: funding_source
+          in: query
+          schema:
+            type: string
+            enum: [cash, free_spin]
       responses:
         '200':
           description: Paginated bet history
@@ -1603,7 +1608,7 @@ components:
 
     BetHistoryItem:
       type: object
-      required: [id, round_id, bet_amount, win_amount, net_amount, status, currency]
+      required: [id, round_id, bet_amount, win_amount, net_amount, status, currency, funding_source]
       properties:
         id:
           type: integer
@@ -1619,6 +1624,9 @@ components:
           type: string
         status:
           type: string
+        funding_source:
+          type: string
+          enum: [cash, free_spin]
         currency:
           type: string
         played_at:
@@ -1949,6 +1957,12 @@ components:
         spin_count:
           type: integer
           nullable: true
+        spins_used:
+          type: integer
+          nullable: true
+        spins_remaining:
+          type: integer
+          nullable: true
         provider_slug:
           type: string
           nullable: true
@@ -1967,6 +1981,9 @@ components:
         status:
           type: string
         spin_count:
+          type: integer
+          nullable: true
+        spins_used:
           type: integer
           nullable: true
         provider_bonus_id:

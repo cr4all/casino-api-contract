@@ -8,12 +8,14 @@ RabbitMQ message schemas for integration between the Casino Platform and externa
 
 | event_type | Routing key | Required `data` fields |
 |------------|-------------|------------------------|
-| `wallet.bet` | `wallet.bet` | `player_id`, `amount`, `ledger_id`, `reference_type`, `reference_id` |
+| `wallet.bet` | `wallet.bet` | `player_id`, `amount`, `ledger_id`, `reference_type`, `reference_id` (+ optional `funding_source`, `metadata`) |
 | `wallet.win` | `wallet.win` | same as bet |
 | `wallet.rollback` | `wallet.rollback` | `player_id`, `amount`, `ledger_id`, `original_ledger_id`, `reference_type`, `reference_id` |
+| `game.bet` | `game.bet` | `player_id`, `amount`, `reference_type`, `reference_id`, `funding_source` (+ optional `metadata`) |
 | `payment.deposit` | `payment.deposit` | `player_id`, `amount`, `deposit_id`, `ledger_id`, `currency` |
 | `payment.withdraw` | `payment.withdraw` | `player_id`, `amount`, `withdrawal_id`, `ledger_id`, `currency` |
 | `bonus.created` | `bonus.created` | `player_id`, `bonus_id`, `amount` (+ optional `ledger_id`, `type`, `metadata`) |
+| `bonus.completed` | `bonus.completed` | `player_id`, `bonus_id`, `amount` (+ optional `ledger_id`, `type`, `metadata`, `wagering`, `spin_count`, `spins_used`) |
 | `affiliate.commission` | `affiliate.commission` | `affiliate_id`, `player_id`, `commission_id`, `amount`, `type` |
 | `notification.send` | `notification.send` | `channel`, `template` (+ optional `player_id`, `data`) |
 
