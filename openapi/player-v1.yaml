@@ -1893,7 +1893,7 @@ components:
 
     BonusPolicy:
       type: object
-      required: [policy_id, name, type, amount_type, amount_value, wagering_multiplier]
+      required: [policy_id, name, type, amount_type, amount_value, wagering_multiplier, claimable]
       properties:
         policy_id:
           type: integer
@@ -1907,6 +1907,21 @@ components:
           type: string
         wagering_multiplier:
           type: number
+        claimable:
+          type: boolean
+        claim_blocked_reason:
+          type: string
+          nullable: true
+          enum: [deposit_required, already_claimed, provider_not_supported]
+        spin_count:
+          type: integer
+          nullable: true
+        provider_slug:
+          type: string
+          nullable: true
+        provider_name:
+          type: string
+          nullable: true
 
     ActiveBonus:
       type: object
@@ -1914,6 +1929,9 @@ components:
         id:
           type: integer
         policy_name:
+          type: string
+          nullable: true
+        type:
           type: string
           nullable: true
         amount:
@@ -1928,6 +1946,15 @@ components:
               type: string
             wagered:
               type: string
+        spin_count:
+          type: integer
+          nullable: true
+        provider_slug:
+          type: string
+          nullable: true
+        provider_bonus_id:
+          type: integer
+          nullable: true
 
     BonusClaimed:
       type: object
@@ -1939,6 +1966,12 @@ components:
           type: string
         status:
           type: string
+        spin_count:
+          type: integer
+          nullable: true
+        provider_bonus_id:
+          type: integer
+          nullable: true
 
     InternalMessage:
       type: object
