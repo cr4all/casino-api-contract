@@ -1924,7 +1924,7 @@ components:
         claim_blocked_reason:
           type: string
           nullable: true
-          enum: [deposit_required, deposit_after_valid_from_required, already_claimed, provider_not_supported]
+          enum: [deposit_required, first_deposit_after_valid_from_required, already_claimed, provider_not_supported]
         spin_count:
           type: integer
           nullable: true
