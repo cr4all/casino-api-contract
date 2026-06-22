@@ -1434,6 +1434,13 @@ components:
           maxLength: 32
           nullable: true
           example: 1920x1080
+        turnstile_token:
+          type: string
+          maxLength: 2048
+          nullable: true
+          description: |
+            Cloudflare Turnstile response token (retry after RISK_CHALLENGE only).
+            Verified server-side; never forwarded to AFS.
 
     RegisterRequest:
       type: object

@@ -193,6 +193,40 @@ Publish with routing key **`payment.deposit`** (same as `event_type`).
 | `session_id` | `string \| null` | no | Your session id |
 | `referrer` | `string \| null` | no | Signup referrer |
 | `failure_reason` | `string \| null` | no | For `player.login.failed` / `player.signup.failed` |
+| `step_up_verification` | `object \| null` | no | Server-set after Cloudflare Turnstile siteverify (see below) |
+
+#### `metadata.step_up_verification` (Turnstile challenge response)
+
+Your backend verifies a Cloudflare Turnstile token **before** calling `POST /evaluate`, then attaches the result here. **Never send the raw Turnstile token to AFS.**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `provider` | `"cloudflare_turnstile"` | Fixed value |
+| `verified` | `boolean` | Cloudflare siteverify `success` |
+| `verified_at` | `string` (ISO-8601) | When your backend verified (UTC) |
+| `hostname` | `string \| null` | Hostname from Cloudflare response |
+| `action` | `string \| null` | Action from Cloudflare response (if present) |
+
+**AFS scoring rules:**
+
+- No `step_up_verification` → existing scoring unchanged
+- `verified: true` → sync evaluate may downgrade `challenge` to `allow` for the same risk profile
+- `verified: false` or expired token → keep or strengthen `challenge`
+
+Example (after successful Turnstile siteverify):
+
+```json
+"metadata": {
+  "channel": "web",
+  "step_up_verification": {
+    "provider": "cloudflare_turnstile",
+    "verified": true,
+    "verified_at": "2026-06-22T12:00:00Z",
+    "hostname": "casino.example.com",
+    "action": null
+  }
+}
+```
 
 ### `EvaluateResponse` — sync response
 
