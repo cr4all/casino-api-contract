@@ -19,12 +19,13 @@ When AFS runs via Docker on your machine, your backend connects over **localhost
 3. [Your backend's 4 jobs](#your-backends-4-jobs)
 4. [Step 1 — Collect context](#step-1--collect-context)
 5. [Step 2 — Sync gates (required for critical flows)](#step-2--sync-gates-required-for-critical-flows)
-6. [Shared withdrawal methods (multi-account payout detection)](#shared-withdrawal-methods-multi-account-payout-detection)
-7. [AML blocklist screening (OFAC wallets & countries)](#aml-blocklist-screening-ofac-wallets--countries)
-8. [Step 3 — Async events (RabbitMQ)](#step-3--async-events-rabbitmq)
-9. [Step 4 — Consume actions (async enforcement)](#step-4--consume-actions-async-enforcement)
-10. [Minimal vs full integration](#minimal-vs-full-integration)
-11. [Quick test from PowerShell](#quick-test-from-powershell)
+6. [Payment method fields (`payment_method_type` / `payment_method_key`)](#payment-method-fields-payment_method_type--payment_method_key)
+7. [Shared withdrawal methods (multi-account payout detection)](#shared-withdrawal-methods-multi-account-payout-detection)
+8. [AML blocklist screening (OFAC wallets & countries)](#aml-blocklist-screening-ofac-wallets--countries)
+9. [Step 3 — Async events (RabbitMQ)](#step-3--async-events-rabbitmq)
+10. [Step 4 — Consume actions (async enforcement)](#step-4--consume-actions-async-enforcement)
+11. [Minimal vs full integration](#minimal-vs-full-integration)
+12. [Quick test from PowerShell](#quick-test-from-powershell)
 
 ---
 
@@ -129,6 +130,8 @@ Use this shape when publishing wallet/payment/bonus events (from contract):
 | `data.payment_method_type` / `data.payment_method` / `data.payout_method` | `transaction.payment_method_type` |
 | `data.payment_method_key` / `data.payout_key` / `data.iban` / `data.wallet_address` | `transaction.payment_method_key` |
 
+Full type/key formats and examples: [Payment method fields](#payment-method-fields-payment_method_type--payment_method_key).
+
 Publish with routing key **`payment.deposit`** (same as `event_type`).
 
 ### `CanonicalEvent` — sync `/evaluate` and auth async
@@ -180,7 +183,7 @@ Publish with routing key **`payment.deposit`** (same as `event_type`).
 
 †Required when `event_type` is `payment.deposit`, `payment.withdraw`, `wallet.bet`, or `game.bet`.
 
-‡Strongly recommended for `payment.withdraw` — required for [shared withdrawal method detection](#shared-withdrawal-methods-multi-account-payout-detection) and [AML crypto wallet blocklist screening](#aml-blocklist-screening-ofac-wallets--countries).
+‡Strongly recommended for `payment.withdraw` and `payment.deposit` — see [Payment method fields](#payment-method-fields-payment_method_type--payment_method_key) for all supported formats. Required for [shared withdrawal method detection](#shared-withdrawal-methods-multi-account-payout-detection) and [AML crypto wallet blocklist screening](#aml-blocklist-screening-ofac-wallets--countries).
 
 #### `metadata` object
 
@@ -408,30 +411,249 @@ Use a **unique UUID** for every `event_id`.
 
 ---
 
+## Payment method fields (`payment_method_type` / `payment_method_key`)
+
+These fields identify **where money is sent** on deposits and withdrawals. They power shared payout detection, crypto blocklist screening, and related AML checks.
+
+### Canonical format (recommended)
+
+Use on **`POST /evaluate`** and in flat event JSON:
+
+```json
+"transaction": {
+  "amount": 500.0,
+  "currency": "EUR",
+  "payment_method_type": "<category>",
+  "payment_method_key": "<destination-id>"
+}
+```
+
+| Field | Type | Max length | Notes |
+|-------|------|------------|-------|
+| `payment_method_type` | string | 64 | Payout category (see below) |
+| `payment_method_key` | string | 256 | Destination identifier (IBAN, wallet, e-wallet id, or hash) |
+
+There is **no fixed enum** in the JSON schema — any string is valid — but AFS **normalizes** types internally and treats some values as crypto for blocklist checks.
+
+### `payment_method_type` — categories
+
+#### Canonical types
+
+| Type | Use for |
+|------|---------|
+| `bank` | Bank transfer, IBAN, SEPA, wire |
+| `crypto` | Any cryptocurrency wallet |
+| `ewallet` | PayPal, Skrill, Neteller, and similar |
+| `card` | Card payouts (if your platform supports them) |
+
+#### Aliases (auto-normalized)
+
+AFS lowercases values and converts spaces/hyphens to `_`, then maps these aliases:
+
+| You send | Normalized to |
+|----------|---------------|
+| `bank_transfer`, `wire`, `iban`, `sepa` | `bank` |
+| `cryptocurrency`, `bitcoin`, `ethereum` | `crypto` |
+| `e_wallet`, `digital_wallet` | `ewallet` |
+
+#### Values treated as crypto (AML blocklist)
+
+In addition to `crypto` and any type containing `"crypto"`, these trigger **crypto wallet blocklist** screening:
+
+`btc`, `eth`, `ethereum`, `bitcoin`, `cryptocurrency`, `usdt`, `trx`, `tron`
+
+Examples:
+
+```json
+"payment_method_type": "crypto"
+"payment_method_type": "btc"
+"payment_method_type": "eth"
+"payment_method_type": "usdt"
+"payment_method_type": "trx"
+```
+
+### `payment_method_key` — formats by type
+
+#### Bank (`bank`)
+
+| Format | Example |
+|--------|---------|
+| IBAN (with or without spaces) | `"DE89370400440532013000"` or `"DE89 3704 0044 0532 0130 00"` |
+| Other bank account id | Any string — AFS removes spaces and uppercases |
+
+```json
+"payment_method_type": "bank",
+"payment_method_key": "DE89370400440532013000"
+```
+
+#### Crypto (`crypto`, `btc`, `eth`, etc.)
+
+| Chain | Example format |
+|-------|----------------|
+| EVM (ETH, BSC, etc.) | `"0xabc123def4567890abcdef1234567890abcdef12"` (`0x` + hex; case-insensitive) |
+| Bitcoin | `"1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"` (Base58; case-sensitive) |
+| Tron / others | Address string — EVM-style addresses lowercased when they start with `0x` |
+
+AFS normalization: `0x…` addresses → lowercase; other formats trimmed as-is.
+
+```json
+"payment_method_type": "crypto",
+"payment_method_key": "0xabc123def4567890abcdef1234567890abcdef12"
+```
+
+```json
+"payment_method_type": "btc",
+"payment_method_key": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
+```
+
+#### E-wallet (`ewallet`)
+
+| Format | Example |
+|--------|---------|
+| Email or account id | `"user@paypal.com"`, `"skrill_account_123"` |
+
+AFS lowercases the key.
+
+```json
+"payment_method_type": "ewallet",
+"payment_method_key": "user@paypal.com"
+```
+
+#### Card (`card`)
+
+| Format | Example |
+|--------|---------|
+| Tokenized card ref | `"card_token_abc123"` or a stable hash |
+
+AFS lowercases the key.
+
+```json
+"payment_method_type": "card",
+"payment_method_key": "card_token_abc123"
+```
+
+#### Hashed key (privacy-friendly)
+
+You may send a **stable hash** from your backend instead of raw account data. The same account must always produce the same hash.
+
+```json
+"payment_method_type": "bank",
+"payment_method_key": "sha256:8f3a2b1c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0"
+```
+
+AFS matches on the exact string you send. Normalization (IBAN spacing, crypto lowercasing) applies before hashing only when you send raw values — if you hash on your side, hash the normalized form consistently.
+
+### Platform envelope aliases (async RabbitMQ)
+
+In `PlatformEventEnvelope.data`, these fields map to the canonical `transaction` shape:
+
+| Platform `data` field | Maps to |
+|-----------------------|---------|
+| `payment_method_type` | `transaction.payment_method_type` |
+| `payment_method` | `transaction.payment_method_type` |
+| `payout_method` | `transaction.payment_method_type` |
+| `payment_method_key` | `transaction.payment_method_key` |
+| `payout_key` | `transaction.payment_method_key` |
+| `iban` | `transaction.payment_method_key` (type defaults to **`bank`** if omitted) |
+| `wallet_address` | `transaction.payment_method_key` (type defaults to **`crypto`** if omitted) |
+
+Async example — only `wallet_address` in `data`:
+
+```json
+{
+  "event_type": "payment.withdraw",
+  "data": {
+    "player_id": 123,
+    "amount": "500.0000",
+    "currency": "EUR",
+    "wallet_address": "0xabc123def4567890abcdef1234567890abcdef12"
+  }
+}
+```
+
+→ AFS maps to `payment_method_type: "crypto"`, `payment_method_key: "0xabc123..."`.
+
+### Full examples by payout type
+
+**Bank / IBAN**
+
+```json
+"transaction": {
+  "amount": 500.0,
+  "currency": "EUR",
+  "payment_method_type": "bank",
+  "payment_method_key": "DE89370400440532013000"
+}
+```
+
+**Crypto (EVM)**
+
+```json
+"transaction": {
+  "amount": 500.0,
+  "currency": "EUR",
+  "payment_method_type": "crypto",
+  "payment_method_key": "0xabc123def4567890abcdef1234567890abcdef12"
+}
+```
+
+**Crypto (BTC)**
+
+```json
+"transaction": {
+  "amount": 500.0,
+  "currency": "EUR",
+  "payment_method_type": "btc",
+  "payment_method_key": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
+}
+```
+
+**E-wallet**
+
+```json
+"transaction": {
+  "amount": 500.0,
+  "currency": "EUR",
+  "payment_method_type": "ewallet",
+  "payment_method_key": "user@skrill.com"
+}
+```
+
+### Which AFS features use these fields
+
+| Feature | Both fields required? | Notes |
+|---------|----------------------|-------|
+| Shared withdrawal method detection | Yes | Any `type` + `key` pair |
+| AML crypto blocklist (OFAC) | Type must be crypto-like | `key` = wallet address or hash |
+| Amount-based AML thresholds | No | Uses `amount` / `currency` only |
+
+If either field is missing, shared-withdrawal and crypto blocklist checks are **skipped** (not failed).
+
+### Integration notes
+
+1. Use **`payment_method_type`** — not legacy `payment_method` alone (that name is only an async alias).
+2. Use a **stable `user_id`** across signup, login, and withdrawal for cross-account detection.
+3. Normalize consistently on your backend before sending (especially IBAN spacing and `0x` casing).
+4. Live schema: `GET http://localhost:8001/schemas/canonical-event.schema.json`
+
+---
+
 ## Shared withdrawal methods (multi-account payout detection)
 
 AFS can detect when **multiple player accounts share the same payout destination** (bank IBAN, crypto wallet, e-wallet, etc.). This helps catch multi-account abuse and collusion rings cashing out to one account.
 
 ### What your backend must send
 
-Include payout method fields on every **`payment.withdraw`** evaluate request (sync and async):
+Include payout method fields on every **`payment.withdraw`** (and recommended on **`payment.deposit`**) evaluate request. See [Payment method fields](#payment-method-fields-payment_method_type--payment_method_key) for all supported types, formats, platform aliases, and examples.
 
-| Field | Example | Notes |
-|-------|---------|-------|
-| `transaction.payment_method_type` | `"bank"`, `"crypto"`, `"ewallet"`, `"card"` | Category of payout method |
-| `transaction.payment_method_key` | `"DE89370400440532013000"` or `"0xabc123..."` | Destination identifier — IBAN, wallet address, or e-wallet account id |
+**Minimum:**
 
-**Recommended:** normalize and optionally hash the key in your backend before sending (e.g. SHA-256 of normalized IBAN). AFS also normalizes values (IBAN spacing removed, crypto lowercased) and stores only a hashed Redis key — raw account numbers are not kept in Redis.
+| Field | Example |
+|-------|---------|
+| `transaction.payment_method_type` | `"bank"`, `"crypto"`, `"ewallet"`, `"card"` |
+| `transaction.payment_method_key` | `"DE89370400440532013000"` or `"0xabc123..."` |
 
-**Aliases accepted** in platform `data` (async envelope):
-
-| Platform `data` field | Maps to |
-|-----------------------|---------|
-| `payment_method` | `payment_method_type` |
-| `payout_method` | `payment_method_type` |
-| `payout_key` | `payment_method_key` |
-| `iban` | `payment_method_key` (type defaults to `bank`) |
-| `wallet_address` | `payment_method_key` (type defaults to `crypto`) |
+**Recommended:** normalize and optionally hash the key in your backend before sending (e.g. SHA-256 of normalized IBAN). AFS also normalizes raw values (IBAN spacing removed, EVM addresses lowercased) and stores only a hashed Redis key for shared-method detection — raw account numbers are not kept in Redis.
 
 ### Signals and decisions
 
@@ -570,7 +792,7 @@ Risk needs **outbound HTTPS** to GitHub raw URLs for crypto list sync. Lists are
 
 ### What your backend must send
 
-**Crypto withdrawal / deposit** — include wallet address when the payout or funding method is crypto:
+**Crypto withdrawal / deposit** — include wallet address when the payout or funding method is crypto (full format reference: [Payment method fields](#payment-method-fields-payment_method_type--payment_method_key)):
 
 ```json
 {
@@ -594,7 +816,7 @@ Risk needs **outbound HTTPS** to GitHub raw URLs for crypto list sync. Lists are
 }
 ```
 
-Supported crypto `payment_method_type` values include `crypto`, `btc`, `eth`, `usdt`, `trx`, and similar.
+Supported crypto `payment_method_type` values: `crypto`, `btc`, `eth`, `usdt`, `trx`, and aliases listed in [Payment method fields](#payment-method-fields-payment_method_type--payment_method_key).
 
 ### Signals and decisions
 
@@ -876,7 +1098,8 @@ curl http://localhost:8001/integration/event-schema
 Your backend uses **contract `event_type` names** everywhere:
 
 - **Sync gates:** `POST /evaluate` with `player.signup`, `player.login`, `payment.deposit`, `payment.withdraw`
-- **Withdrawals:** include `payment_method_type` + `payment_method_key` for shared payout detection (toggle in `/admin` → Withdrawal Methods)
+- **Payment methods:** `payment_method_type` + `payment_method_key` on deposits/withdrawals — see [Payment method fields](#payment-method-fields-payment_method_type--payment_method_key)
+- **Withdrawals:** shared payout detection toggle in `/admin` → Withdrawal Methods
 - **AML blocklist:** send `context.country` + crypto wallet on money events; toggle and sync in `/admin` → AML & Transactions
 - **Async platform:** `PlatformEventEnvelope` on `casino.events` (`wallet.bet`, `payment.deposit`, …)
 - **Async auth failures:** `player.login.failed`, `player.signup.failed`
