@@ -19,10 +19,12 @@ When AFS runs via Docker on your machine, your backend connects over **localhost
 3. [Your backend's 4 jobs](#your-backends-4-jobs)
 4. [Step 1 — Collect context](#step-1--collect-context)
 5. [Step 2 — Sync gates (required for critical flows)](#step-2--sync-gates-required-for-critical-flows)
-6. [Step 3 — Async events (RabbitMQ)](#step-3--async-events-rabbitmq)
-7. [Step 4 — Consume actions (async enforcement)](#step-4--consume-actions-async-enforcement)
-8. [Minimal vs full integration](#minimal-vs-full-integration)
-9. [Quick test from PowerShell](#quick-test-from-powershell)
+6. [Shared withdrawal methods (multi-account payout detection)](#shared-withdrawal-methods-multi-account-payout-detection)
+7. [AML blocklist screening (OFAC wallets & countries)](#aml-blocklist-screening-ofac-wallets--countries)
+8. [Step 3 — Async events (RabbitMQ)](#step-3--async-events-rabbitmq)
+9. [Step 4 — Consume actions (async enforcement)](#step-4--consume-actions-async-enforcement)
+10. [Minimal vs full integration](#minimal-vs-full-integration)
+11. [Quick test from PowerShell](#quick-test-from-powershell)
 
 ---
 
@@ -124,6 +126,8 @@ Use this shape when publishing wallet/payment/bonus events (from contract):
 | `data.amount` | `transaction.amount` (parsed from `"500.0000"`) |
 | `data.currency` | `transaction.currency` |
 | `data.metadata.ip` | `context.ip` (when present) |
+| `data.payment_method_type` / `data.payment_method` / `data.payout_method` | `transaction.payment_method_type` |
+| `data.payment_method_key` / `data.payout_key` / `data.iban` / `data.wallet_address` | `transaction.payment_method_key` |
 
 Publish with routing key **`payment.deposit`** (same as `event_type`).
 
@@ -163,7 +167,7 @@ Publish with routing key **`payment.deposit`** (same as `event_type`).
 | `platform` | `string \| null` | no | e.g. `Win32`, `iPhone` |
 | `screen_resolution` | `string \| null` | no | e.g. `1920x1080` |
 
-\*Strongly recommended for `player.signup` / `player.login` — missing fingerprint on web increases risk score.
+\*Strongly recommended for `player.signup` / `player.login` — missing fingerprint on web increases risk score. `context.country` is also used for [AML blocklist country screening](#aml-blocklist-screening-ofac-wallets--countries).
 
 #### `transaction` object
 
@@ -171,8 +175,12 @@ Publish with routing key **`payment.deposit`** (same as `event_type`).
 |-------|------|----------|-------------|
 | `amount` | `number \| null` | **yes**† | Amount in major units, e.g. `500.0` |
 | `currency` | `string \| null` | **yes**† | ISO 4217, e.g. `EUR` |
+| `payment_method_type` | `string \| null` | no‡ | Payout method category: `bank`, `crypto`, `ewallet`, `card`, etc. |
+| `payment_method_key` | `string \| null` | no‡ | Normalized payout destination (IBAN, wallet address, e-wallet id). Your backend may send a hash instead of raw values. |
 
 †Required when `event_type` is `payment.deposit`, `payment.withdraw`, `wallet.bet`, or `game.bet`.
+
+‡Strongly recommended for `payment.withdraw` — required for [shared withdrawal method detection](#shared-withdrawal-methods-multi-account-payout-detection) and [AML crypto wallet blocklist screening](#aml-blocklist-screening-ofac-wallets--countries).
 
 #### `metadata` object
 
@@ -255,9 +263,8 @@ def build_login_event(user_id: str, context: dict) -> dict:
 | **Risk API (sync)** | `http://localhost:8001/evaluate` |
 | **Risk health / docs** | `http://localhost:8001/health` · `http://localhost:8001/docs` |
 | **Event schema** | `http://localhost:8001/integration/event-schema` |
-| **Publish async events** | RabbitMQ `amqp://afs:afs@localhost:5672/` → exchange `casino.events` |
-| **Consume enforcement actions** | RabbitMQ queue `risk.actions` |
-| **RabbitMQ UI** (debug) | http://localhost:15672 (`afs` / `afs`) |
+| **Publish async events** | RabbitMQ `amqp://casino:secret@10.10.51.60:5672/` → exchange `casino.events` |
+| **Consume enforcement actions** | RabbitMQ queue `risk.actions` on the same broker |
 
 Your backend does **not** connect to Postgres or Redis directly — those are internal to AFS.
 
@@ -362,7 +369,12 @@ Example — `payment.withdraw` (gate before payout):
     "country": "DE",
     "fingerprint": "a1b2c3d4e5f6789012345678abcdef01"
   },
-  "transaction": { "amount": 500.0, "currency": "EUR" },
+  "transaction": {
+    "amount": 500.0,
+    "currency": "EUR",
+    "payment_method_type": "bank",
+    "payment_method_key": "DE89370400440532013000"
+  },
   "metadata": { "channel": "web" }
 }
 ```
@@ -396,6 +408,289 @@ Use a **unique UUID** for every `event_id`.
 
 ---
 
+## Shared withdrawal methods (multi-account payout detection)
+
+AFS can detect when **multiple player accounts share the same payout destination** (bank IBAN, crypto wallet, e-wallet, etc.). This helps catch multi-account abuse and collusion rings cashing out to one account.
+
+### What your backend must send
+
+Include payout method fields on every **`payment.withdraw`** evaluate request (sync and async):
+
+| Field | Example | Notes |
+|-------|---------|-------|
+| `transaction.payment_method_type` | `"bank"`, `"crypto"`, `"ewallet"`, `"card"` | Category of payout method |
+| `transaction.payment_method_key` | `"DE89370400440532013000"` or `"0xabc123..."` | Destination identifier — IBAN, wallet address, or e-wallet account id |
+
+**Recommended:** normalize and optionally hash the key in your backend before sending (e.g. SHA-256 of normalized IBAN). AFS also normalizes values (IBAN spacing removed, crypto lowercased) and stores only a hashed Redis key — raw account numbers are not kept in Redis.
+
+**Aliases accepted** in platform `data` (async envelope):
+
+| Platform `data` field | Maps to |
+|-----------------------|---------|
+| `payment_method` | `payment_method_type` |
+| `payout_method` | `payment_method_type` |
+| `payout_key` | `payment_method_key` |
+| `iban` | `payment_method_key` (type defaults to `bank`) |
+| `wallet_address` | `payment_method_key` (type defaults to `crypto`) |
+
+### Signals and decisions
+
+When enabled, AFS counts **distinct `user_id`s** per payout destination:
+
+| Distinct users | Signal | Default score |
+|----------------|--------|---------------|
+| 2+ | `shared_withdrawal_method` | 35 |
+| 3+ | `multiple_accounts_shared_payout_method` | 55 |
+| 4+ | `multi_account_shared_withdrawal_method` | 80 (hard-block by default) |
+
+Typical outcomes for `payment.withdraw`:
+
+| Decision | Orchestrator `action` |
+|----------|------------------------|
+| `challenge` | `manual_review_withdrawal` |
+| `block` | `hold_withdrawal` |
+
+Example blocked withdrawal response:
+
+```json
+{
+  "event_id": "550e8400-e29b-41d4-a716-446655440001",
+  "user_id": "player_456",
+  "event_type": "payment.withdraw",
+  "decision": "block",
+  "final_score": 85,
+  "risk_level": "critical",
+  "engines": {
+    "velocity": {
+      "engine": "velocity",
+      "score": 80,
+      "signals": ["multi_account_shared_withdrawal_method"]
+    }
+  },
+  "latency_ms": 12,
+  "source": "sync"
+}
+```
+
+### Admin dashboard toggle
+
+The check is **on by default** and can be turned off without redeploying:
+
+1. Open **`/admin`** (Risk service, e.g. `http://localhost:8001/admin`)
+2. Go to the **Withdrawal Methods** tab
+3. Toggle **Enabled** on/off
+4. Adjust distinct-user thresholds and score weights as needed
+
+Settings are stored in the runtime config database and take effect immediately.
+
+### Backend checklist
+
+- [ ] Store payout method type + destination id on each withdrawal record in your platform
+- [ ] Include `payment_method_type` and `payment_method_key` in sync `POST /evaluate` before approving payout
+- [ ] Include the same fields in async `payment.withdraw` platform envelopes (if you use async scoring)
+- [ ] Use a **stable `user_id`** across signup, login, and withdrawal for the same player
+- [ ] Handle `manual_review_withdrawal` / `hold_withdrawal` actions when shared-method signals appear
+
+### TypeScript example — withdrawal with payout method
+
+```typescript
+function buildWithdrawEvent(
+  userId: string,
+  amount: number,
+  currency: string,
+  payoutType: string,
+  payoutKey: string,
+  ctx: CanonicalEvent["context"],
+): CanonicalEvent {
+  return {
+    event_id: crypto.randomUUID(),
+    event_type: "payment.withdraw",
+    timestamp: new Date().toISOString(),
+    user: { user_id: userId },
+    context: ctx,
+    transaction: {
+      amount,
+      currency,
+      payment_method_type: payoutType,
+      payment_method_key: payoutKey,
+    },
+    metadata: { channel: "web" },
+  };
+}
+```
+
+### Python example — withdrawal with payout method
+
+```python
+def build_withdraw_event(
+    user_id: str,
+    amount: float,
+    currency: str,
+    payout_type: str,
+    payout_key: str,
+    context: dict,
+) -> dict:
+    return {
+        "event_id": str(uuid4()),
+        "event_type": "payment.withdraw",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "user": {"user_id": user_id},
+        "context": context,
+        "transaction": {
+            "amount": amount,
+            "currency": currency,
+            "payment_method_type": payout_type,
+            "payment_method_key": payout_key,
+        },
+        "metadata": {"channel": "web"},
+    }
+```
+
+---
+
+## AML blocklist screening (OFAC wallets & countries)
+
+AFS can block transactions involving **sanctioned crypto wallet addresses** and **blocklisted countries** to reduce scam and compliance risk. Lists are synced from free third-party sources (Treasury SDN derivatives) and stored locally — checks run in microseconds without a per-request API call.
+
+### What gets checked
+
+| Check | Events | Input field | Source |
+|-------|--------|-------------|--------|
+| **Crypto wallet blocklist** | `payment.withdraw`, `payment.deposit` | `transaction.payment_method_key` when type is crypto | OFAC sync + manual list |
+| **Country blocklist** | `player.signup`, `player.login`, `payment.deposit`, `payment.withdraw` | `context.country` (ISO-2) | OFAC sync + Lists tab + manual list |
+
+### Third-party data sources
+
+| Data | Source | Refresh |
+|------|--------|---------|
+| Crypto wallets | [brave-intl/ofac-sanctioned-digital-currency-addresses](https://github.com/brave-intl/ofac-sanctioned-digital-currency-addresses) (U.S. Treasury SDN derivative) | Daily (default: every 24h) |
+| Countries | Treasury-derived OFAC country program list (built into AFS) | Daily with sync job |
+
+Risk needs **outbound HTTPS** to GitHub raw URLs for crypto list sync. Lists are stored in the AFS database — your backend never calls these sources directly.
+
+### What your backend must send
+
+**Crypto withdrawal / deposit** — include wallet address when the payout or funding method is crypto:
+
+```json
+{
+  "event_type": "payment.withdraw",
+  "context": { "country": "DE", "ip": "203.0.113.10" },
+  "transaction": {
+    "amount": 500.0,
+    "currency": "EUR",
+    "payment_method_type": "crypto",
+    "payment_method_key": "0xabc123def4567890abcdef1234567890abcdef12"
+  }
+}
+```
+
+**Country screening** — always send `context.country` on signup, login, deposit, and withdrawal (server-side geo or user profile):
+
+```json
+"context": {
+  "ip": "203.0.113.10",
+  "country": "DE"
+}
+```
+
+Supported crypto `payment_method_type` values include `crypto`, `btc`, `eth`, `usdt`, `trx`, and similar.
+
+### Signals and decisions
+
+| Hit | Signal | Default score | Typical outcome |
+|-----|--------|---------------|-----------------|
+| OFAC-synced wallet | `ofac_sanctioned_wallet` | 90 | **block** → `hold_withdrawal` |
+| Manual wallet entry | `blocklisted_payout_address` | 90 | **block** → `hold_withdrawal` |
+| Blocklisted country | `blocklisted_country` | 90 | **block** on money events |
+
+All three signals are **hard-block by default** (listed under Critical Signals in admin).
+
+Example blocked crypto withdrawal:
+
+```json
+{
+  "event_id": "550e8400-e29b-41d4-a716-446655440003",
+  "user_id": "player_123",
+  "event_type": "payment.withdraw",
+  "decision": "block",
+  "final_score": 90,
+  "risk_level": "critical",
+  "engines": {
+    "aml_blocklist": {
+      "engine": "aml_blocklist",
+      "score": 90,
+      "signals": ["ofac_sanctioned_wallet"]
+    }
+  },
+  "latency_ms": 8,
+  "source": "sync"
+}
+```
+
+### Admin dashboard toggles
+
+All settings are under **`/admin` → AML & Transactions** (no redeploy needed):
+
+| Setting | Purpose |
+|---------|---------|
+| **Blocklist screening enabled** | Master on/off |
+| **Crypto wallet screening** | Check payout/deposit crypto addresses |
+| **Country blocklist screening** | Check `context.country` |
+| **Auto-sync OFAC crypto wallets** | Daily fetch from third-party OFAC lists |
+| **Auto-sync OFAC countries** | Load Treasury-derived country list into DB |
+| **Fail open if sync unavailable** | When on, stale/missing sync does not block |
+| **Include Lists tab sanctioned countries** | Merge `Lists → sanctioned countries` into checks |
+| **Manual crypto wallets** | Extra addresses (one per line) |
+| **Manual blocklisted countries** | Extra ISO codes (one per line, e.g. `IR`, `KP`) |
+
+The panel also shows **Blocklist sync status** and a **Sync OFAC lists now** button.
+
+Admin API (requires admin key):
+
+```http
+GET  /api/admin/blocklist/status
+POST /api/admin/blocklist/sync
+```
+
+### Environment variable
+
+Background sync runs automatically on startup in production. To disable the background job (manual sync via admin still works):
+
+```env
+AML_BLOCKLIST_BACKGROUND_SYNC=false
+```
+
+### Backend checklist
+
+- [ ] Send `context.country` (ISO-2 uppercase) on signup, login, deposit, and withdrawal
+- [ ] Send `payment_method_type` + `payment_method_key` for crypto payouts and deposits
+- [ ] Enforce `block` when `ofac_sanctioned_wallet`, `blocklisted_payout_address`, or `blocklisted_country` appear
+- [ ] After deploy, open admin → AML & Transactions → **Sync OFAC lists now** (or wait for daily sync)
+- [ ] Add known scam wallets to **Manual crypto wallets** without waiting for Treasury updates
+
+### Python example — crypto withdrawal with blocklist fields
+
+```python
+def build_crypto_withdraw_event(user_id: str, wallet: str, amount: float, context: dict) -> dict:
+    return {
+        "event_id": str(uuid4()),
+        "event_type": "payment.withdraw",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "user": {"user_id": user_id},
+        "context": context,  # must include country for country blocklist
+        "transaction": {
+            "amount": amount,
+            "currency": "EUR",
+            "payment_method_type": "crypto",
+            "payment_method_key": wallet,
+        },
+        "metadata": {"channel": "web"},
+    }
+```
+
+---
+
 ## Step 3 — Async events (RabbitMQ)
 
 ### Platform events (wallet, payment, bonus)
@@ -414,7 +709,7 @@ import aio_pika
 
 async def publish_platform_event(envelope: dict):
     routing_key = envelope["event_type"]  # e.g. payment.deposit
-    conn = await aio_pika.connect_robust("amqp://afs:afs@localhost:5672/")
+    conn = await aio_pika.connect_robust("amqp://casino:secret@10.10.51.60:5672/")
     async with conn:
         channel = await conn.channel()
         exchange = await channel.declare_exchange(
@@ -474,7 +769,7 @@ Orchestrator maps Risk decisions → actions on queue **`risk.actions`**:
 
 ```python
 async def consume_actions():
-    conn = await aio_pika.connect_robust("amqp://afs:afs@localhost:5672/")
+    conn = await aio_pika.connect_robust("amqp://casino:secret@10.10.51.60:5672/")
     channel = await conn.channel()
     queue = await channel.declare_queue("risk.actions", durable=True)
 
@@ -519,7 +814,7 @@ Example action message:
   "final_score": 85,
   "risk_level": "high",
   "action": "hold_withdrawal",
-  "signals": ["new_device_on_withdrawal"],
+  "signals": ["new_device_on_withdrawal", "ofac_sanctioned_wallet"],
   "processed_at": "2026-06-21T12:00:02Z"
 }
 ```
@@ -534,6 +829,8 @@ Example action message:
 - [ ] Backend builds payloads with contract `event_type` names
 - [ ] Backend validates payload before send (JSON Schema / TypedDict)
 - [ ] Backend calls `POST http://localhost:8001/evaluate` with `player.*` / `payment.*` types
+- [ ] Withdrawals include `transaction.payment_method_type` and `transaction.payment_method_key`
+- [ ] Send `context.country` on signup, login, deposit, and withdrawal (for AML blocklist)
 - [ ] Backend enforces `allow` / `challenge` / `block`
 
 **Full (sync + async)** — audit trail + async enforcement:
@@ -553,10 +850,15 @@ curl -X POST http://localhost:8001/evaluate `
   -H "Content-Type: application/json" `
   -d '{"event_id":"test_001","event_type":"player.signup","timestamp":"2026-06-21T12:00:00Z","user":{"user_id":"player_123","email":"maria@gmail.com"},"context":{"ip":"203.0.113.10","country":"DE","fingerprint":"a1b2c3d4e5f6789012345678abcdef01"},"metadata":{"channel":"web"}}'
 
-# Money gate — payment.withdraw
+# Money gate — payment.withdraw (bank payout + shared-method / blocklist fields)
 curl -X POST http://localhost:8001/evaluate `
   -H "Content-Type: application/json" `
-  -d '{"event_id":"test_002","event_type":"payment.withdraw","timestamp":"2026-06-21T14:00:00Z","user":{"user_id":"player_123"},"context":{"ip":"203.0.113.10","country":"DE","fingerprint":"a1b2c3d4e5f6789012345678abcdef01"},"transaction":{"amount":500,"currency":"EUR"},"metadata":{"channel":"web"}}'
+  -d '{"event_id":"test_002","event_type":"payment.withdraw","timestamp":"2026-06-21T14:00:00Z","user":{"user_id":"player_123"},"context":{"ip":"203.0.113.10","country":"DE","fingerprint":"a1b2c3d4e5f6789012345678abcdef01"},"transaction":{"amount":500,"currency":"EUR","payment_method_type":"bank","payment_method_key":"DE89370400440532013000"},"metadata":{"channel":"web"}}'
+
+# Crypto withdraw — include wallet address for OFAC blocklist screening
+curl -X POST http://localhost:8001/evaluate `
+  -H "Content-Type: application/json" `
+  -d '{"event_id":"test_003","event_type":"payment.withdraw","timestamp":"2026-06-21T14:00:00Z","user":{"user_id":"player_123"},"context":{"ip":"203.0.113.10","country":"DE"},"transaction":{"amount":500,"currency":"EUR","payment_method_type":"crypto","payment_method_key":"0xabc123def4567890abcdef1234567890abcdef12"},"metadata":{"channel":"web"}}'
 ```
 
 You should get JSON with `"decision": "allow"`, `"challenge"`, or `"block"`.
@@ -574,6 +876,8 @@ curl http://localhost:8001/integration/event-schema
 Your backend uses **contract `event_type` names** everywhere:
 
 - **Sync gates:** `POST /evaluate` with `player.signup`, `player.login`, `payment.deposit`, `payment.withdraw`
+- **Withdrawals:** include `payment_method_type` + `payment_method_key` for shared payout detection (toggle in `/admin` → Withdrawal Methods)
+- **AML blocklist:** send `context.country` + crypto wallet on money events; toggle and sync in `/admin` → AML & Transactions
 - **Async platform:** `PlatformEventEnvelope` on `casino.events` (`wallet.bet`, `payment.deposit`, …)
 - **Async auth failures:** `player.login.failed`, `player.signup.failed`
 - **Enforcement:** HTTP `decision` (sync) or `risk.actions` queue (async)
