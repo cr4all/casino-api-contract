@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Casino Platform Player API
-  version: 1.5.0
+  version: 1.7.0
   description: |
     Player-facing REST API for the casino platform.
     Source of truth derived from `routes/api.php` and Feature Tests.
@@ -90,6 +90,8 @@ paths:
                         example: Registration successful.
         '422':
           $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/RiskBlocked'
 
   /auth/login:
     post:
@@ -116,6 +118,8 @@ paths:
                         $ref: '#/components/schemas/LoginResponseData'
         '422':
           $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/RiskBlocked'
 
   /auth/refresh:
     post:
@@ -567,6 +571,8 @@ paths:
                   maxLength: 2
                   description: ISO 3166-1 alpha-2 country code
                   example: ID
+                risk_context:
+                  $ref: '#/components/schemas/ClientRiskContext'
       responses:
         '201':
           description: Deposit created
@@ -581,6 +587,8 @@ paths:
                         $ref: '#/components/schemas/DepositCreated'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/RiskBlocked'
         '422':
           $ref: '#/components/responses/ValidationError'
 
@@ -631,6 +639,8 @@ paths:
                   type: object
                   additionalProperties: true
                   description: Destination fields (address, account, network, etc.) based on option destination_fields
+                risk_context:
+                  $ref: '#/components/schemas/ClientRiskContext'
       responses:
         '201':
           description: Withdrawal created
@@ -645,6 +655,8 @@ paths:
                         $ref: '#/components/schemas/WithdrawalCreated'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/RiskBlocked'
         '422':
           $ref: '#/components/responses/ValidationError'
 
@@ -1218,6 +1230,48 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
+    RiskBlocked:
+      description: |
+        Request denied by anti-fraud sync gate (`POST /evaluate`).
+        `error.code` is `RISK_BLOCKED` when blocked, or `RISK_CHALLENGE` when step-up verification is required.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorEnvelope'
+              - type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        enum: [RISK_BLOCKED]
+                      message:
+                        type: string
+                        example: Request blocked by risk evaluation.
+                      details:
+                        $ref: '#/components/schemas/RiskEvaluationDetails'
+    RiskChallenge:
+      description: Additional verification required by anti-fraud risk evaluation
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorEnvelope'
+              - type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        enum: [RISK_CHALLENGE]
+                      message:
+                        type: string
+                        example: Additional verification is required.
+                      details:
+                        $ref: '#/components/schemas/RiskEvaluationDetails'
 
   schemas:
     SuccessEnvelope:
@@ -1251,11 +1305,27 @@ components:
                 - LAUNCH_ERROR
                 - UNAUTHORIZED
                 - FORBIDDEN
+                - RISK_BLOCKED
+                - RISK_CHALLENGE
             message:
               type: string
             details:
               type: object
               additionalProperties: true
+
+    RiskEvaluationDetails:
+      type: object
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        final_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        risk_level:
+          type: string
+          enum: [low, medium, high, critical]
 
     Pagination:
       type: object
@@ -1319,6 +1389,59 @@ components:
           type: string
           example: United States
 
+    ClientRiskContext:
+      type: object
+      description: |
+        Device signals collected client-side for anti-fraud (AFS).
+        Server adds ip and country; do not send those from the client.
+      properties:
+        fingerprint:
+          type: string
+          maxLength: 64
+          nullable: true
+          description: FingerprintJS visitorId (32 hex chars)
+        fingerprint_version:
+          type: string
+          maxLength: 32
+          nullable: true
+          description: FingerprintJS version, e.g. v4.2.0
+        user_agent:
+          type: string
+          maxLength: 512
+          nullable: true
+        device_id:
+          type: string
+          maxLength: 128
+          nullable: true
+          description: Native app device id (use instead of fingerprint on mobile)
+        browser_language:
+          type: string
+          maxLength: 32
+          nullable: true
+          example: en-US
+        timezone:
+          type: string
+          maxLength: 64
+          nullable: true
+          example: America/New_York
+        platform:
+          type: string
+          maxLength: 64
+          nullable: true
+          example: Win32
+        screen_resolution:
+          type: string
+          maxLength: 32
+          nullable: true
+          example: 1920x1080
+        turnstile_token:
+          type: string
+          maxLength: 2048
+          nullable: true
+          description: |
+            Cloudflare Turnstile response token (retry after RISK_CHALLENGE only).
+            Verified server-side; never forwarded to AFS.
+
     RegisterRequest:
       type: object
       required: [email, password, password_confirmation, nickname, phone, country, currency]
@@ -1355,6 +1478,8 @@ components:
           type: string
           maxLength: 50
           nullable: true
+        risk_context:
+          $ref: '#/components/schemas/ClientRiskContext'
 
     LoginRequest:
       type: object
@@ -1379,6 +1504,8 @@ components:
           type: string
           maxLength: 100
           nullable: true
+        risk_context:
+          $ref: '#/components/schemas/ClientRiskContext'
 
     PasswordRecoveryRequestBody:
       type: object
