@@ -797,10 +797,39 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /affiliate/player-statistics:
+    get:
+      tags: [Affiliate]
+      summary: List per-player statistics for referred players
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [today, week, 30days, month]
+            default: week
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Paginated player statistics
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AffiliatePlayerStatisticsList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /affiliate/commissions:
     get:
       tags: [Affiliate]
-      summary: List commission history
+      summary: List commission history (legacy; not used in affiliate portal UI)
       parameters:
         - $ref: '#/components/parameters/PerPage'
       responses:
@@ -1342,16 +1371,12 @@ components:
 
     RegisterOptionsData:
       type: object
-      required: [currencies, countries]
+      required: [currencies]
       properties:
         currencies:
           type: array
           items:
             $ref: '#/components/schemas/RegistrationCurrency'
-        countries:
-          type: array
-          items:
-            $ref: '#/components/schemas/RegistrationCountry'
 
     SessionPolicyData:
       type: object
@@ -1467,7 +1492,7 @@ components:
           minLength: 2
           maxLength: 2
           example: US
-          description: ISO 3166-1 alpha-2 code from GET /auth/register-options
+          description: ISO 3166-1 alpha-2 code matching the phone country picker selection
         currency:
           type: string
           minLength: 3
@@ -2358,6 +2383,70 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AffiliateCommission'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    PlayerStatisticsMetrics:
+      type: object
+      required:
+        - total_bet
+        - total_win
+        - deposits
+        - withdrawals
+        - cash_turnover
+        - bonus_turnover
+        - ggr
+        - bonus_cost
+        - affiliate_cost
+        - ngr
+      properties:
+        total_bet:
+          type: string
+        total_win:
+          type: string
+        deposits:
+          type: string
+        withdrawals:
+          type: string
+        cash_turnover:
+          type: string
+        bonus_turnover:
+          type: string
+        ggr:
+          type: string
+        bonus_cost:
+          type: string
+        affiliate_cost:
+          type: string
+        ngr:
+          type: string
+
+    AffiliatePlayerStatistics:
+      type: object
+      required: [player_id, registered_at, stats]
+      properties:
+        player_id:
+          type: integer
+        nickname:
+          type: string
+          nullable: true
+        registered_at:
+          type: string
+          format: date-time
+        stats:
+          $ref: '#/components/schemas/PlayerStatisticsMetrics'
+
+    AffiliatePlayerStatisticsList:
+      type: object
+      required: [period, items, pagination]
+      properties:
+        period:
+          type: string
+          enum: [today, week, 30days, month]
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AffiliatePlayerStatistics'
         pagination:
           $ref: '#/components/schemas/Pagination'
 
