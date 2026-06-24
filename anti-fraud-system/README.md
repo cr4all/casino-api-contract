@@ -68,10 +68,10 @@ Validate in your backend **before** calling AFS:
 |--------------|----------------|-------------|
 | `wallet.bet` | yes | Wallet bet debited |
 | `game.bet` | yes | Game bet (non-wallet, e.g. free spin) |
+| `wallet.win` | yes | Win credited |
 | `payment.deposit` | yes | Deposit completed |
 | `payment.withdraw` | yes | Withdrawal approved |
 | `bonus.created` | yes | Bonus granted |
-| `wallet.win` | no (skipped) | Win credited |
 | `wallet.rollback` | no (skipped) | Wallet rollback |
 | `bonus.completed` | no (skipped) | Bonus completed |
 | `affiliate.commission` | no (skipped) | Affiliate commission |
@@ -177,13 +177,15 @@ Publish with routing key **`payment.deposit`** (same as `event_type`).
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `amount` | `number \| null` | **yes**† | Amount in major units, e.g. `500.0` |
-| `currency` | `string \| null` | **yes**† | ISO 4217, e.g. `EUR` |
-| `payment_method_type` | `string \| null` | no‡ | Payout method category: `bank`, `crypto`, `ewallet`, `card`, etc. |
-| `payment_method_key` | `string \| null` | no‡ | Normalized payout destination (IBAN, wallet address, e-wallet id). Your backend may send a hash instead of raw values. |
+| `currency` | `string \| null` | **yes**‡ | ISO 4217, e.g. `EUR` |
+| `payment_method_type` | `string \| null` | no§ | Payout method category: `bank`, `crypto`, `ewallet`, `card`, etc. |
+| `payment_method_key` | `string \| null` | no§ | Normalized payout destination (IBAN, wallet address, e-wallet id). Your backend may send a hash instead of raw values. |
 
 †Required when `event_type` is `payment.deposit`, `payment.withdraw`, `wallet.bet`, or `game.bet`.
 
-‡Strongly recommended for `payment.withdraw` and `payment.deposit` — see [Payment method fields](#payment-method-fields-payment_method_type--payment_method_key) for all supported formats. Required for [shared withdrawal method detection](#shared-withdrawal-methods-multi-account-payout-detection) and [AML crypto wallet blocklist screening](#aml-blocklist-screening-ofac-wallets--countries).
+‡Required for `payment.deposit` and `payment.withdraw` only. Optional for `wallet.bet`, `game.bet`, and `wallet.win` (provider-sourced; AFS does not apply currency or EUR-normalized stake rules).
+
+§Strongly recommended for `payment.withdraw` and `payment.deposit` — see [Payment method fields](#payment-method-fields-payment_method_type--payment_method_key) for all supported formats. Required for [shared withdrawal method detection](#shared-withdrawal-methods-multi-account-payout-detection) and [AML crypto wallet blocklist screening](#aml-blocklist-screening-ofac-wallets--countries).
 
 #### `metadata` object
 
@@ -194,6 +196,16 @@ Publish with routing key **`payment.deposit`** (same as `event_type`).
 | `referrer` | `string \| null` | no | Signup referrer |
 | `failure_reason` | `string \| null` | no | For `player.login.failed` / `player.signup.failed` |
 | `step_up_verification` | `object \| null` | no | Server-set after Cloudflare Turnstile siteverify (see below) |
+| `game` | `object \| null` | no | Live-casino bet leg — see [Hedged betting](#hedged-betting-live-casino) |
+
+#### `metadata.game`
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `selection` | **yes** | Bet side: `banker`, `player`, `tie`, … |
+| `round_id` | recommended | Same for all legs of one hand/round |
+| `table_id` | recommended | Table id (fallback if no `round_id`) |
+| `game_type` | optional | e.g. `baccarat` |
 
 #### `metadata.step_up_verification` (Turnstile challenge response)
 
@@ -210,8 +222,9 @@ Your backend verifies a Cloudflare Turnstile token **before** calling `POST /eva
 **AFS scoring rules:**
 
 - No `step_up_verification` → existing scoring unchanged
-- `verified: true` → sync evaluate may downgrade `challenge` to `allow` for the same risk profile
-- `verified: false` or expired token → keep or strengthen `challenge`
+- `verified: true` with fresh `verified_at` → may downgrade `challenge` to `allow` (never overrides `block`); stores a grant for configured days per user + device
+- `verified: false` → adds signal `turnstile_verification_failed`
+- Stale `verified_at` → ignored (`turnstile_verification_stale`)
 
 Example (after successful Turnstile siteverify):
 
@@ -227,6 +240,8 @@ Example (after successful Turnstile siteverify):
   }
 }
 ```
+
+Configure grant duration and event types in the admin dashboard under **Step-up (Turnstile)**.
 
 ### `EvaluateResponse` — sync response
 
@@ -440,6 +455,54 @@ if result["decision"] == "challenge":
 | Signup failed | `player.signup.failed` | Async `casino.events` |
 | Wallet bet | `wallet.bet` | Async `casino.events` (platform envelope) |
 | Game bet | `game.bet` | Async `casino.events` (platform envelope) |
+
+**Bet events (`wallet.bet`, `game.bet`, `wallet.win`)** are treated as **provider-sourced**: AFS scores `user_id` and betting-pattern velocity only. It does **not** penalize missing email, phone, IP, fingerprint, user-agent, **currency**, or apply EUR-based stake/AML amount thresholds — those are usually absent or unreliable when the game provider sends the bet/win result. Send `transaction.amount` if available; `currency` is optional.
+
+**Betting-pattern checks** (rolling window, default 5 minutes — configurable in admin **Betting patterns**):
+
+| Event | What is checked | Example signals |
+|-------|-----------------|-----------------|
+| `game.bet` | Too many sequential bonus/free-spin bets | `sequential_game_bet_burst`, `high_sequential_game_bet_burst` |
+| `wallet.bet` | Too many sequential real-money bets | `sequential_wallet_bet_burst`, `high_sequential_wallet_bet_burst` |
+| `wallet.win` | Too many wins in sequence; win rate vs recent bets | `sequential_wallet_win_burst`, `high_win_rate_in_betting_sequence` |
+
+### Hedged betting (live casino)
+
+Detects **volume washing**: e.g. baccarat **banker 1000 + player 1000** on the **same round** — high transaction count, ~zero net loss.
+
+**Send on every `wallet.bet` / `game.bet`:**
+
+- `metadata.game.selection` — **required**
+- `metadata.game.round_id` — **strongly recommended** (same value for both legs)
+- `metadata.game.table_id`, `game_type` — optional
+- `transaction.amount` — **required**
+
+Works on sync `POST /evaluate` and async `casino.events`. For platform envelopes, put `game` under `data.metadata.game` (or `data.game`). `bet_side` is accepted as an alias for `selection`.
+
+```json
+{
+  "event_type": "wallet.bet",
+  "user": { "user_id": "player_123" },
+  "transaction": { "amount": 1000.0 },
+  "metadata": {
+    "channel": "api",
+    "game": {
+      "round_id": "hand_8821",
+      "table_id": "baccarat_table_7",
+      "game_type": "baccarat",
+      "selection": "banker"
+    }
+  }
+}
+```
+
+Send the **player** leg with the same `round_id` and matching `amount`.
+
+**Signals:** `opposite_side_bets_same_round`, `repeated_hedged_rounds`, `hedged_bet_volume_washing` (and high/critical tiers).
+
+**Admin:** **Hedged betting** tab — opposite pairs (default `[["banker","player"]]`), amount tolerance, thresholds.
+
+**Your backend:** treat flagged rounds as **ineligible volume** for transaction-count rewards; AFS scores only.
 
 Use a **unique UUID** for every `event_id`.
 
@@ -658,10 +721,13 @@ Async example — only `wallet_address` in `data`:
 | Feature | Both fields required? | Notes |
 |---------|----------------------|-------|
 | Shared withdrawal method detection | Yes | Any `type` + `key` pair |
-| AML crypto blocklist (OFAC) | Type must be crypto-like | `key` = wallet address or hash |
+| AML crypto blocklist (OFAC + manual) | Type must be crypto-like | `key` = wallet address or hash |
+| AML manual bank blocklist | Type must be `bank` (or alias) | `key` = IBAN or account id |
+| AML manual e-wallet blocklist | Type must be `ewallet` | `key` = e-wallet id or email |
+| AML manual card blocklist | Type must be `card` | `key` = card token or payout ref |
 | Amount-based AML thresholds | No | Uses `amount` / `currency` only |
 
-If either field is missing, shared-withdrawal and crypto blocklist checks are **skipped** (not failed).
+If either field is missing, shared-withdrawal and payout blocklist checks are **skipped** (not failed).
 
 ### Integration notes
 
@@ -891,13 +957,19 @@ All settings are under **`/admin` → AML & Transactions** (no redeploy needed):
 | Setting | Purpose |
 |---------|---------|
 | **Blocklist screening enabled** | Master on/off |
-| **Crypto wallet screening** | Check payout/deposit crypto addresses |
+| **Crypto wallet screening** | Check crypto addresses (OFAC sync + manual list) |
+| **Bank account screening** | Check bank/IBAN payouts against manual list |
+| **E-wallet screening** | Check e-wallet payouts against manual list |
+| **Card payout screening** | Check card payouts against manual list |
 | **Country blocklist screening** | Check `context.country` |
 | **Auto-sync OFAC crypto wallets** | Daily fetch from third-party OFAC lists |
 | **Auto-sync OFAC countries** | Load Treasury-derived country list into DB |
 | **Fail open if sync unavailable** | When on, stale/missing sync does not block |
 | **Include Lists tab sanctioned countries** | Merge `Lists → sanctioned countries` into checks |
-| **Manual crypto wallets** | Extra addresses (one per line) |
+| **Manual crypto wallets** | Crypto addresses to block (one per line) |
+| **Manual bank accounts** | IBANs / bank account ids to block (one per line) |
+| **Manual e-wallet accounts** | E-wallet ids or emails to block (one per line) |
+| **Manual card payouts** | Card tokens / payout refs to block (one per line) |
 | **Manual blocklisted countries** | Extra ISO codes (one per line, e.g. `IR`, `KP`) |
 
 The panel also shows **Blocklist sync status** and a **Sync OFAC lists now** button.
@@ -923,7 +995,7 @@ AML_BLOCKLIST_BACKGROUND_SYNC=false
 - [ ] Send `payment_method_type` + `payment_method_key` for crypto payouts and deposits
 - [ ] Enforce `block` when `ofac_sanctioned_wallet`, `blocklisted_payout_address`, or `blocklisted_country` appear
 - [ ] After deploy, open admin → AML & Transactions → **Sync OFAC lists now** (or wait for daily sync)
-- [ ] Add known scam wallets to **Manual crypto wallets** without waiting for Treasury updates
+- [ ] Add known scam payout destinations to the matching manual list (crypto, bank, e-wallet, or card)
 
 ### Python example — crypto withdrawal with blocklist fields
 
@@ -953,9 +1025,9 @@ def build_crypto_withdraw_event(user_id: str, wallet: str, amount: float, contex
 
 Your casino backend already publishes `PlatformEventEnvelope` to **`casino.events`**. AFS subscribes on queue **`casino.afs`** and scores:
 
-- `wallet.bet`, `game.bet`, `payment.deposit`, `payment.withdraw`, `bonus.created`
+- `wallet.bet`, `game.bet`, `wallet.win`, `payment.deposit`, `payment.withdraw`, `bonus.created`
 
-Non-scored events (`wallet.win`, `notification.send`, etc.) are **acked and skipped**.
+Non-scored events (`wallet.rollback`, `notification.send`, etc.) are **acked and skipped**.
 
 **Routing key must equal `event_type`** (per contract):
 
@@ -1058,6 +1130,7 @@ async def consume_actions():
 | `block` | `player.login.failed` | `rate_limit_ip` |
 | `block` | `payment.deposit` | `block_deposit` |
 | `block` | `wallet.bet` / `game.bet` | `block_bet` |
+| `block` | `wallet.win` | `hold_win_credit` |
 
 Example action message:
 
