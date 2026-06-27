@@ -20,6 +20,7 @@ tags:
   - name: Bonus
   - name: Affiliate
   - name: Notification
+  - name: SupportTicket
   - name: Game
 
 security:
@@ -988,6 +989,158 @@ paths:
                             $ref: '#/components/schemas/Pagination'
         '401':
           $ref: '#/components/responses/Unauthorized'
+
+  /support-tickets:
+    get:
+      tags: [SupportTicket]
+      summary: List player support tickets
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, pending, resolved, closed]
+      responses:
+        '200':
+          description: Ticket list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [items, pagination]
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/SupportTicketSummary'
+                          pagination:
+                            $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [SupportTicket]
+      summary: Create support ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject, category, body]
+              properties:
+                subject:
+                  type: string
+                  minLength: 3
+                  maxLength: 255
+                category:
+                  type: string
+                  enum: [account, payment, bonus, game, other]
+                body:
+                  type: string
+                  minLength: 1
+                  maxLength: 5000
+      responses:
+        '201':
+          description: Ticket created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          ticket:
+                            $ref: '#/components/schemas/SupportTicketDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /support-tickets/{id}:
+    get:
+      tags: [SupportTicket]
+      summary: Get support ticket detail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Ticket detail with messages
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          ticket:
+                            $ref: '#/components/schemas/SupportTicketDetail'
+                          messages:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/SupportTicketMessage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /support-tickets/{id}/messages:
+    post:
+      tags: [SupportTicket]
+      summary: Reply to support ticket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body:
+                  type: string
+                  minLength: 1
+                  maxLength: 5000
+      responses:
+        '201':
+          description: Reply created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          message:
+                            $ref: '#/components/schemas/SupportTicketMessage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
 
   /games/vendors:
     get:
@@ -2157,6 +2310,57 @@ components:
           type: string
         is_read:
           type: boolean
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    SupportTicketSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        subject:
+          type: string
+        category:
+          type: string
+          enum: [account, payment, bonus, game, other]
+        status:
+          type: string
+          enum: [open, pending, resolved, closed]
+        priority:
+          type: string
+        unread_player_count:
+          type: integer
+        last_message_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    SupportTicketDetail:
+      allOf:
+        - $ref: '#/components/schemas/SupportTicketSummary'
+        - type: object
+          properties:
+            closed_at:
+              type: string
+              format: date-time
+              nullable: true
+
+    SupportTicketMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        sender_type:
+          type: string
+          enum: [player, admin]
+        body:
+          type: string
         created_at:
           type: string
           format: date-time
