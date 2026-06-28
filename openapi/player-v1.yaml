@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Casino Platform Player API
-  version: 1.7.0
+  version: 1.8.0
   description: |
     Player-facing REST API for the casino platform.
     Source of truth derived from `routes/api.php` and Feature Tests.
@@ -1842,9 +1842,30 @@ components:
           type: string
           minLength: 8
 
+    BetFundingSource:
+      type: string
+      description: Source of funds for a bet or related ledger entry.
+      enum: [cash, bonus, mixed, free_spin]
+
+    WalletBucket:
+      type: string
+      description: Wallet bucket affected by a ledger entry.
+      enum: [cash, bonus]
+
     WalletBalance:
       type: object
-      required: [wallet_id, player_id, currency, balance, status]
+      required:
+        - wallet_id
+        - player_id
+        - currency
+        - balance
+        - cash_balance
+        - bonus_balance
+        - withdrawable_balance
+        - withdrawable_cash_balance
+        - withdrawable_bonus_balance
+        - bonus_locked
+        - status
       properties:
         wallet_id:
           type: integer
@@ -1854,7 +1875,28 @@ components:
           type: string
         balance:
           type: string
+          description: Total playable balance (cash + bonus).
           example: '1250.0000'
+        cash_balance:
+          type: string
+          example: '1000.0000'
+        bonus_balance:
+          type: string
+          example: '250.0000'
+        withdrawable_balance:
+          type: string
+          description: Total amount eligible for withdrawal (cash + unlocked bonus).
+          example: '1000.0000'
+        withdrawable_cash_balance:
+          type: string
+          example: '1000.0000'
+        withdrawable_bonus_balance:
+          type: string
+          description: Bonus balance eligible for withdrawal when wagering is complete.
+          example: '0.0000'
+        bonus_locked:
+          type: boolean
+          description: True when active bonus wagering prevents bonus withdrawal.
         status:
           type: string
 
@@ -1894,6 +1936,18 @@ components:
         reference_id:
           type: string
           nullable: true
+        funding_source:
+          $ref: '#/components/schemas/BetFundingSource'
+          nullable: true
+        wallet_bucket:
+          $ref: '#/components/schemas/WalletBucket'
+          nullable: true
+        cash_balance_after:
+          type: string
+          nullable: true
+        bonus_balance_after:
+          type: string
+          nullable: true
         created_at:
           type: string
           format: date-time
@@ -1923,6 +1977,12 @@ components:
           $ref: '#/components/schemas/BetHistoryGame'
         bet_amount:
           type: string
+        bet_cash_amount:
+          type: string
+          description: Portion of the bet funded from cash balance.
+        bet_bonus_amount:
+          type: string
+          description: Portion of the bet funded from bonus balance.
         win_amount:
           type: string
         net_amount:
@@ -1930,9 +1990,8 @@ components:
         status:
           type: string
         funding_source:
-          type: string
-          enum: [cash, free_spin]
-          description: Spin funding source — cash wallet or free spin bonus.
+          $ref: '#/components/schemas/BetFundingSource'
+          description: Spin funding source — cash, bonus, mixed, or free spin.
         spin_type:
           type: string
           description: Human-readable spin type label (e.g. Cash Spin, Free Spin).

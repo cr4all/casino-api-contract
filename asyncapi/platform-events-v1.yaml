@@ -516,9 +516,12 @@ components:
             data:
               player_id: 123
               amount: '100.0000'
+              cash_amount: '100.0000'
+              bonus_amount: '0.0000'
               ledger_id: 789
               reference_type: game_round
               reference_id: round_abc123
+              provider_slug: golden-gatex
               metadata:
                 game_code: slot_01
                 game_hall: main
@@ -938,8 +941,18 @@ components:
         reference_id:
           type: string
           description: Round or transaction identifier (e.g. provider round id).
+        cash_amount:
+          $ref: '#/components/schemas/DecimalAmount'
+          description: Portion of the bet debited from cash balance.
+        bonus_amount:
+          $ref: '#/components/schemas/DecimalAmount'
+          description: Portion of the bet debited from bonus balance.
         funding_source:
           $ref: '#/components/schemas/BetFundingSource'
+        provider_slug:
+          type: string
+          nullable: true
+          description: Game provider slug when available in bet metadata.
         metadata:
           $ref: '#/components/schemas/WalletTransactionMetadata'
 
@@ -1005,6 +1018,8 @@ components:
       description: Source of funds for a bet or related win.
       enum:
         - cash
+        - bonus
+        - mixed
         - free_spin
       default: cash
 
