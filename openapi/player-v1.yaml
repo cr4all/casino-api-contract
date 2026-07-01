@@ -1002,6 +1002,132 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /notifications/messages/{id}/read:
+    post:
+      tags: [Notification]
+      summary: Mark internal message as read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Message marked as read
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [id, is_read]
+                        properties:
+                          id:
+                            type: integer
+                          is_read:
+                            type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /notifications/announcements/{id}/read:
+    post:
+      tags: [Notification]
+      summary: Mark notice announcement as read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Announcement marked as read
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [id, is_read]
+                        properties:
+                          id:
+                            type: integer
+                          is_read:
+                            type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /notifications/popups:
+    get:
+      tags: [Notification]
+      summary: List active popup announcements
+      responses:
+        '200':
+          description: Active popups for the authenticated player
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [items]
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/AnnouncementPopup'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /notifications/popups/{id}/dismiss:
+    post:
+      tags: [Notification]
+      summary: Dismiss popup announcement
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Popup dismissed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [id, dismissed_at]
+                        properties:
+                          id:
+                            type: integer
+                          dismissed_at:
+                            type: string
+                            format: date-time
+                            nullable: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /support-tickets:
     get:
       tags: [SupportTicket]
@@ -2381,7 +2507,33 @@ components:
           type: string
         is_read:
           type: boolean
+        source:
+          type: string
+          enum: [system, announcement]
         created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    AnnouncementPopup:
+      type: object
+      required: [id, title, body]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        body:
+          type: string
+        starts_at:
+          type: string
+          format: date-time
+          nullable: true
+        ends_at:
+          type: string
+          format: date-time
+          nullable: true
+        published_at:
           type: string
           format: date-time
           nullable: true
