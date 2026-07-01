@@ -20,6 +20,7 @@ tags:
   - name: Bonus
   - name: Affiliate
   - name: Notification
+  - name: SupportTicket
   - name: Game
 
 security:
@@ -806,8 +807,20 @@ paths:
           in: query
           schema:
             type: string
-            enum: [today, week, 30days, month]
-            default: week
+            enum: [today, last_week, last_month, custom]
+            default: today
+        - name: from
+          in: query
+          description: Start date (YYYY-MM-DD) when period=custom
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          description: End date (YYYY-MM-DD) when period=custom
+          schema:
+            type: string
+            format: date
         - $ref: '#/components/parameters/PerPage'
       responses:
         '200':
@@ -988,6 +1001,284 @@ paths:
                             $ref: '#/components/schemas/Pagination'
         '401':
           $ref: '#/components/responses/Unauthorized'
+
+  /notifications/messages/{id}/read:
+    post:
+      tags: [Notification]
+      summary: Mark internal message as read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Message marked as read
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [id, is_read]
+                        properties:
+                          id:
+                            type: integer
+                          is_read:
+                            type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /notifications/announcements/{id}/read:
+    post:
+      tags: [Notification]
+      summary: Mark notice announcement as read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Announcement marked as read
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [id, is_read]
+                        properties:
+                          id:
+                            type: integer
+                          is_read:
+                            type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /notifications/popups:
+    get:
+      tags: [Notification]
+      summary: List active popup announcements
+      responses:
+        '200':
+          description: Active popups for the authenticated player
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [items]
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/AnnouncementPopup'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /notifications/popups/{id}/dismiss:
+    post:
+      tags: [Notification]
+      summary: Dismiss popup announcement
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Popup dismissed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [id, dismissed_at]
+                        properties:
+                          id:
+                            type: integer
+                          dismissed_at:
+                            type: string
+                            format: date-time
+                            nullable: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /support-tickets:
+    get:
+      tags: [SupportTicket]
+      summary: List player support tickets
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, pending, resolved, closed]
+      responses:
+        '200':
+          description: Ticket list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [items, pagination]
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/SupportTicketSummary'
+                          pagination:
+                            $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [SupportTicket]
+      summary: Create support ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject, category, body]
+              properties:
+                subject:
+                  type: string
+                  minLength: 3
+                  maxLength: 255
+                category:
+                  type: string
+                  enum: [account, payment, bonus, game, other]
+                body:
+                  type: string
+                  minLength: 1
+                  maxLength: 5000
+      responses:
+        '201':
+          description: Ticket created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          ticket:
+                            $ref: '#/components/schemas/SupportTicketDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /support-tickets/{id}:
+    get:
+      tags: [SupportTicket]
+      summary: Get support ticket detail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Ticket detail with messages
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          ticket:
+                            $ref: '#/components/schemas/SupportTicketDetail'
+                          messages:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/SupportTicketMessage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /support-tickets/{id}/messages:
+    post:
+      tags: [SupportTicket]
+      summary: Reply to support ticket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body:
+                  type: string
+                  minLength: 1
+                  maxLength: 5000
+      responses:
+        '201':
+          description: Reply created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          message:
+                            $ref: '#/components/schemas/SupportTicketMessage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
 
   /games/vendors:
     get:
@@ -2216,6 +2507,83 @@ components:
           type: string
         is_read:
           type: boolean
+        source:
+          type: string
+          enum: [system, announcement]
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    AnnouncementPopup:
+      type: object
+      required: [id, title, body]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        body:
+          type: string
+        starts_at:
+          type: string
+          format: date-time
+          nullable: true
+        ends_at:
+          type: string
+          format: date-time
+          nullable: true
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    SupportTicketSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        subject:
+          type: string
+        category:
+          type: string
+          enum: [account, payment, bonus, game, other]
+        status:
+          type: string
+          enum: [open, pending, resolved, closed]
+        priority:
+          type: string
+        unread_player_count:
+          type: integer
+        last_message_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    SupportTicketDetail:
+      allOf:
+        - $ref: '#/components/schemas/SupportTicketSummary'
+        - type: object
+          properties:
+            closed_at:
+              type: string
+              format: date-time
+              nullable: true
+
+    SupportTicketMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        sender_type:
+          type: string
+          enum: [player, admin]
+        body:
+          type: string
         created_at:
           type: string
           format: date-time
@@ -2448,21 +2816,19 @@ components:
     PlayerStatisticsMetrics:
       type: object
       required:
-        - total_bet
-        - total_win
         - deposits
         - withdrawals
         - cash_turnover
         - bonus_turnover
+        - cash_win
+        - bonus_win
+        - total_turnover
+        - total_win
         - ggr
         - bonus_cost
         - affiliate_cost
         - ngr
       properties:
-        total_bet:
-          type: string
-        total_win:
-          type: string
         deposits:
           type: string
         withdrawals:
@@ -2470,6 +2836,14 @@ components:
         cash_turnover:
           type: string
         bonus_turnover:
+          type: string
+        cash_win:
+          type: string
+        bonus_win:
+          type: string
+        total_turnover:
+          type: string
+        total_win:
           type: string
         ggr:
           type: string
@@ -2501,7 +2875,15 @@ components:
       properties:
         period:
           type: string
-          enum: [today, week, 30days, month]
+          enum: [today, last_week, last_month, custom]
+        from:
+          type: string
+          format: date
+          nullable: true
+        to:
+          type: string
+          format: date
+          nullable: true
         items:
           type: array
           items:
