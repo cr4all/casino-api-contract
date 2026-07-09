@@ -270,6 +270,25 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /player-levels/tiers:
+    get:
+      tags: [Player]
+      summary: List VIP tier catalog (0=Regular .. 6=VIP)
+      responses:
+        '200':
+          description: VIP tier catalog
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PlayerLevelTier'
+
   /player/profile:
     patch:
       tags: [Player]
@@ -1671,6 +1690,38 @@ components:
           nullable: true
           description: KYC verification status
           example: pending
+        vip_level:
+          type: integer
+          minimum: 0
+          maximum: 6
+          description: Current VIP tier level (0=Regular .. 6=VIP)
+          example: 0
+        vip_level_name:
+          type: string
+          description: Human-readable VIP tier name
+          example: Regular
+        vip_level_slug:
+          type: string
+          description: VIP tier slug for icon mapping
+          example: regular
+
+    PlayerLevelTier:
+      type: object
+      required: [level, name, slug, sort_order]
+      properties:
+        level:
+          type: integer
+          minimum: 0
+          maximum: 6
+        name:
+          type: string
+          example: Gold
+        slug:
+          type: string
+          example: gold
+        sort_order:
+          type: integer
+          minimum: 0
 
     PlayerProfileUpdate:
       allOf:
@@ -1758,6 +1809,25 @@ components:
             event_type:
               type: string
               example: payment.deposit
+
+    PlayerVipLevelEvent:
+      type: object
+      required: [player_id, previous_level, vip_level, vip_level_name, vip_level_slug]
+      properties:
+        player_id:
+          type: integer
+        previous_level:
+          type: integer
+          minimum: 0
+          maximum: 6
+        vip_level:
+          type: integer
+          minimum: 0
+          maximum: 6
+        vip_level_name:
+          type: string
+        vip_level_slug:
+          type: string
 
     WalletTransaction:
       type: object
@@ -2612,3 +2682,23 @@ x-realtime:
     event: balance.updated
     payload:
       $ref: '#/components/schemas/WalletBalanceEvent'
+  playerVipLevel:
+    summary: Real-time VIP level updates (WebSocket)
+    description: |
+      Subscribe via Laravel Reverb (Pusher protocol) for live VIP level changes.
+      Initial level should be fetched with `GET /player/me`.
+    connection:
+      url: "ws(s)://{REVERB_HOST}:{REVERB_PORT}/app/{REVERB_APP_KEY}"
+      protocol: websocket
+    auth:
+      method: POST
+      url: /api/broadcasting/auth
+      security:
+        - bearerAuth: []
+      body:
+        channel_name: private-player.{playerId}
+        socket_id: string
+    channel: private-player.{playerId}
+    event: vip.level.updated
+    payload:
+      $ref: '#/components/schemas/PlayerVipLevelEvent'
