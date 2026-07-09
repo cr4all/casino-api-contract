@@ -1,0 +1,414 @@
+openapi: 3.0.3
+info:
+  title: Casino Marketing CRM Integration API
+  version: 1.1.0
+  description: |
+    Integration contract between `casino-crm` and `casino-backend`.
+
+    - **CRM service** exposes `/v1/*` endpoints for platform sync and CRM Admin UI.
+    - **Platform backend** exposes `/api/internal/crm/*` for CRM action execution.
+
+servers:
+  - url: http://localhost:8002
+    description: CRM API (local)
+  - url: http://localhost:8000
+    description: Platform backend (internal routes)
+
+tags:
+  - name: CRM
+  - name: PlatformInternal
+
+paths:
+  /health:
+    get:
+      tags: [CRM]
+      summary: CRM health check
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /v1/players/{platformPlayerId}/segments:
+    get:
+      tags: [CRM]
+      summary: List segments for a platform player
+      security:
+        - serviceKey: []
+      parameters:
+        - name: platformPlayerId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Player segments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayerSegmentsResponse'
+
+  /v1/segments/evaluate:
+    post:
+      tags: [CRM]
+      summary: Recompute segment memberships
+      security:
+        - serviceKey: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluateSegmentsRequest'
+      responses:
+        '200':
+          description: Evaluation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluateSegmentsResponse'
+
+  /v1/internal/integration-summary:
+    get:
+      tags: [CRM]
+      summary: Read-only integration metrics for platform admin hub
+      security:
+        - serviceKey: []
+      responses:
+        '200':
+          description: Integration summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationSummaryResponse'
+
+  /api/internal/crm/health:
+    get:
+      tags: [PlatformInternal]
+      summary: Platform internal CRM health
+      security:
+        - serviceKey: []
+      servers:
+        - url: http://localhost:8000
+      responses:
+        '200':
+          description: OK
+
+  /api/internal/crm/vip-levels:
+    get:
+      tags: [PlatformInternal]
+      summary: List VIP level catalog (0=Regular .. 6=VIP)
+      security:
+        - serviceKey: []
+      servers:
+        - url: http://localhost:8000
+      responses:
+        '200':
+          description: VIP levels
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/VipLevel'
+
+  /api/internal/crm/vip/promote:
+    post:
+      tags: [PlatformInternal]
+      summary: Promote player VIP level on behalf of CRM
+      security:
+        - serviceKey: []
+      servers:
+        - url: http://localhost:8000
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromoteVipRequest'
+      responses:
+        '200':
+          description: Promotion result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PromoteVipResponse'
+
+  /api/internal/crm/notifications/send:
+    post:
+      tags: [PlatformInternal]
+      summary: Send notification on behalf of CRM
+      security:
+        - serviceKey: []
+      servers:
+        - url: http://localhost:8000
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendNotificationRequest'
+      responses:
+        '200':
+          description: Notification sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+
+  /api/internal/crm/bonus/grant:
+    post:
+      tags: [PlatformInternal]
+      summary: Grant bonus by policy on behalf of CRM
+      security:
+        - serviceKey: []
+      servers:
+        - url: http://localhost:8000
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantBonusRequest'
+      responses:
+        '200':
+          description: Bonus granted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+
+  /api/internal/crm/players/{playerId}/summary:
+    get:
+      tags: [PlatformInternal]
+      summary: Player summary for CRM sync
+      security:
+        - serviceKey: []
+      servers:
+        - url: http://localhost:8000
+      parameters:
+        - name: playerId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Player summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayerSummaryResponse'
+
+components:
+  securitySchemes:
+    serviceKey:
+      type: apiKey
+      in: header
+      name: X-Service-Key
+
+  schemas:
+    SuccessEnvelope:
+      type: object
+      required: [success, data, message]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data: {}
+        message:
+          type: string
+          nullable: true
+
+    HealthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            status:
+              type: string
+            service:
+              type: string
+
+    PlayerSegmentsResponse:
+      type: object
+      properties:
+        platformPlayerId:
+          type: integer
+        segments:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              slug:
+                type: string
+              name:
+                type: string
+              matchedAt:
+                type: string
+                format: date-time
+
+    EvaluateSegmentsRequest:
+      type: object
+      properties:
+        platformPlayerId:
+          type: integer
+          nullable: true
+
+    EvaluateSegmentsResponse:
+      type: object
+      properties:
+        platformPlayerId:
+          type: integer
+          nullable: true
+        segments:
+          type: array
+          items:
+            type: string
+        recomputed:
+          type: boolean
+
+    IntegrationSummaryResponse:
+      type: object
+      properties:
+        eventsToday:
+          type: integer
+        eventsTotal:
+          type: integer
+        runsToday:
+          type: integer
+        runsFailed24h:
+          type: integer
+        activeSegments:
+          type: integer
+        activeCampaigns:
+          type: integer
+        eventTypeBreakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              eventType:
+                type: string
+              count:
+                type: integer
+        runStatusBreakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              status:
+                type: string
+              count:
+                type: integer
+
+    SendNotificationRequest:
+      type: object
+      required: [playerId, channel, templateSlug]
+      properties:
+        playerId:
+          type: integer
+        channel:
+          type: string
+          enum: [internal, email]
+        templateSlug:
+          type: string
+        data:
+          type: object
+          additionalProperties:
+            type: string
+
+    GrantBonusRequest:
+      type: object
+      required: [playerId, policyId]
+      properties:
+        playerId:
+          type: integer
+        policyId:
+          type: integer
+
+    PlayerSummaryResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            playerId:
+              type: integer
+            email:
+              type: string
+            status:
+              type: string
+            currency:
+              type: string
+              default: USD
+            language:
+              type: string
+              default: en
+            registeredAt:
+              type: string
+              format: date-time
+              nullable: true
+            vipLevel:
+              type: integer
+              minimum: 0
+              maximum: 6
+            vipLevelName:
+              type: string
+
+    VipLevel:
+      type: object
+      required: [level, name, slug]
+      properties:
+        level:
+          type: integer
+          minimum: 0
+          maximum: 6
+        name:
+          type: string
+        slug:
+          type: string
+
+    PromoteVipRequest:
+      type: object
+      required: [playerId, targetLevel]
+      properties:
+        playerId:
+          type: integer
+        targetLevel:
+          type: integer
+          minimum: 0
+          maximum: 6
+
+    PromoteVipResponse:
+      type: object
+      required: [promoted, previousLevel, vipLevel, levelName]
+      properties:
+        promoted:
+          type: boolean
+        previousLevel:
+          type: integer
+        vipLevel:
+          type: integer
+        levelName:
+          type: string

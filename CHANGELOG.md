@@ -6,6 +6,26 @@ Format follows [Semantic Versioning](https://semver.org/).
 
 ## Platform Events
 
+### [crm-integration-1.1.0] - 2026-07-08
+
+**Spec:** `openapi/crm-integration-v1.yaml`
+
+**Added:**
+
+- VIP level catalog `GET /api/internal/crm/vip-levels` (0=Regular .. 6=VIP)
+- VIP promotion `POST /api/internal/crm/vip/promote`
+- Player summary fields `vipLevel`, `vipLevelName`
+- CRM segment rule fields: `total_deposit`, `lifetime_turnover`, `monthly_turnover`, `platform_vip_level`
+
+### [crm-events-1.0.0] - 2026-07-08
+
+**Spec:** `asyncapi/crm-events-v1.yaml`, `openapi/crm-integration-v1.yaml`
+
+**Added:**
+
+- Marketing CRM integration contract (REST internal API + CRM event topology)
+- CRM consumes subset of platform events on dedicated RabbitMQ broker
+
 ### [platform-events-1.5.0] - 2026-06-21
 
 **Spec:** `asyncapi/platform-events-v1.yaml`
