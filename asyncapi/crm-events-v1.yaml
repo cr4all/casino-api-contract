@@ -1,0 +1,133 @@
+asyncapi: '2.6.0'
+id: urn:cr4all:casino:crm-events:v1
+info:
+  title: Casino Marketing CRM Events
+  version: 1.0.0
+  description: |
+    Event contract between `casino-backend` and `casino-crm`.
+
+    ## Inbound (Platform → CRM)
+
+    CRM consumes a subset of platform events from the **CRM RabbitMQ broker**
+    using the same `PlatformEventEnvelope` defined in `asyncapi/platform-events-v1.yaml`.
+
+    ## Outbound (CRM → Platform)
+
+    CRM may publish action messages to `crm.actions` exchange for optional async execution.
+    Primary action delivery uses REST internal API (`openapi/crm-integration-v1.yaml`).
+
+defaultContentType: application/json
+
+servers:
+  crmBroker:
+    url: amqp://localhost:5673
+    protocol: amqp
+    description: CRM-dedicated RabbitMQ broker
+
+channels:
+  casino.events.auth.signup:
+    description: Player registered
+    subscribe:
+      message:
+        $ref: '#/components/messages/PlatformEventEnvelope'
+
+  casino.events.login_success:
+    description: Player login succeeded (activity / dormant segments)
+    subscribe:
+      message:
+        $ref: '#/components/messages/PlatformEventEnvelope'
+
+  casino.events.payment.deposit:
+    description: Deposit completed
+    subscribe:
+      message:
+        $ref: '#/components/messages/PlatformEventEnvelope'
+
+  casino.events.payment.withdraw:
+    description: Withdrawal approved
+    subscribe:
+      message:
+        $ref: '#/components/messages/PlatformEventEnvelope'
+
+  casino.events.wallet.bet:
+    description: Wallet bet debited
+    subscribe:
+      message:
+        $ref: '#/components/messages/PlatformEventEnvelope'
+
+  casino.events.wallet.win:
+    description: Wallet win credited
+    subscribe:
+      message:
+        $ref: '#/components/messages/PlatformEventEnvelope'
+
+  casino.events.bonus.created:
+    description: Bonus granted to player
+    subscribe:
+      message:
+        $ref: '#/components/messages/PlatformEventEnvelope'
+
+  casino.events.player.vip.promoted:
+    description: Player VIP level promoted on platform
+    subscribe:
+      message:
+        $ref: '#/components/messages/PlatformEventEnvelope'
+
+  crm.actions.notification.send:
+    description: CRM requests in-app/email notification
+    publish:
+      message:
+        $ref: '#/components/messages/CrmActionEnvelope'
+
+  crm.actions.bonus.grant:
+    description: CRM requests bonus grant
+    publish:
+      message:
+        $ref: '#/components/messages/CrmActionEnvelope'
+
+  crm.actions.vip.promote:
+    description: CRM requests VIP level promotion
+    publish:
+      message:
+        $ref: '#/components/messages/CrmActionEnvelope'
+
+components:
+  messages:
+    PlatformEventEnvelope:
+      name: PlatformEventEnvelope
+      payload:
+        type: object
+        required: [event_id, event_type, occurred_at, version, data]
+        properties:
+          event_id:
+            type: string
+            format: uuid
+          event_type:
+            type: string
+          occurred_at:
+            type: string
+            format: date-time
+          version:
+            type: string
+          data:
+            type: object
+
+    CrmActionEnvelope:
+      name: CrmActionEnvelope
+      payload:
+        type: object
+        required: [action_id, action_type, occurred_at, version, data]
+        properties:
+          action_id:
+            type: string
+            format: uuid
+          action_type:
+            type: string
+            enum: [crm.notification.send, crm.bonus.grant, crm.vip.promote]
+          occurred_at:
+            type: string
+            format: date-time
+          version:
+            type: string
+          data:
+            type: object
