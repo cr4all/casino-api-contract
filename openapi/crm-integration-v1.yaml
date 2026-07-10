@@ -191,6 +191,134 @@ paths:
               schema:
                 $ref: '#/components/schemas/SuccessEnvelope'
 
+  /api/internal/crm/bonus/policies:
+    get:
+      tags: [PlatformInternal]
+      summary: List active cashback bonus policies for CRM
+      security:
+        - serviceKey: []
+      servers:
+        - url: http://localhost:8000
+      responses:
+        '200':
+          description: Cashback policies
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/CashbackPolicyResponse'
+
+  /api/internal/crm/bonus/policies/{policyId}:
+    get:
+      tags: [PlatformInternal]
+      summary: Get active cashback bonus policy for CRM eligibility
+      security:
+        - serviceKey: []
+      servers:
+        - url: http://localhost:8000
+      parameters:
+        - name: policyId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Cashback policy
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CashbackPolicyResponse'
+
+  /api/internal/crm/players/{playerId}/cashback-metrics:
+    get:
+      tags: [PlatformInternal]
+      summary: Period-scoped player metrics for CRM cashback eligibility
+      security:
+        - serviceKey: []
+      servers:
+        - url: http://localhost:8000
+      parameters:
+        - name: playerId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: periodType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [daily, weekly, monthly]
+        - name: periodKey
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: providerSlug
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: policyId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Cashback metrics
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CashbackMetricsResponse'
+
+  /api/internal/crm/cashback/grant:
+    post:
+      tags: [PlatformInternal]
+      summary: Grant CRM-evaluated cashback with dynamic amount
+      security:
+        - serviceKey: []
+      servers:
+        - url: http://localhost:8000
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantCashbackRequest'
+      responses:
+        '200':
+          description: Cashback granted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/GrantCashbackResponse'
+
   /api/internal/crm/players/{playerId}/summary:
     get:
       tags: [PlatformInternal]
@@ -344,6 +472,96 @@ components:
           type: integer
         policyId:
           type: integer
+
+    CashbackPolicyResponse:
+      type: object
+      properties:
+        policyId:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+          enum: [cashback]
+        amountType:
+          type: string
+          enum: [percentage]
+        amountValue:
+          type: string
+        wageringMultiplier:
+          type: string
+        rules:
+          type: object
+          properties:
+            period:
+              type: string
+              enum: [daily, weekly, monthly]
+            provider_slug:
+              type: string
+            min_deposit:
+              type: string
+            vip_levels:
+              type: array
+              items:
+                type: integer
+            max_cashback:
+              type: string
+            expire_days:
+              type: integer
+
+    CashbackMetricsResponse:
+      type: object
+      properties:
+        periodKey:
+          type: string
+        periodStart:
+          type: string
+          format: date-time
+        periodEnd:
+          type: string
+          format: date-time
+        deposits:
+          type: string
+        cashGgr:
+          type: string
+        priorCashback:
+          type: string
+        alreadyGranted:
+          type: boolean
+
+    GrantCashbackRequest:
+      type: object
+      required: [playerId, policyId, periodKey, amount]
+      properties:
+        playerId:
+          type: integer
+        policyId:
+          type: integer
+        periodKey:
+          type: string
+        amount:
+          type: string
+        evaluation:
+          type: object
+          properties:
+            netLoss:
+              type: string
+            grossLoss:
+              type: string
+            priorCashbackDeducted:
+              type: string
+            vipLevel:
+              type: integer
+            variantPolicyId:
+              type: integer
+
+    GrantCashbackResponse:
+      type: object
+      properties:
+        playerBonusId:
+          type: integer
+        amount:
+          type: string
 
     PlayerSummaryResponse:
       type: object
