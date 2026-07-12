@@ -86,7 +86,11 @@ Backend publishes only the events listed above to CRM RabbitMQ when `CRM_RABBITM
 | GET | `/api/internal/crm/vip-levels` | VIP level catalog (0–6) |
 | POST | `/api/internal/crm/vip/promote` | Promote player VIP level |
 | POST | `/api/internal/crm/notifications/send` | Send internal/email message |
-| POST | `/api/internal/crm/bonus/grant` | Grant bonus by policy ID |
+| POST | `/api/internal/crm/bonus/grant` | Grant fixed bonus by policy ID |
+| GET | `/api/internal/crm/bonus/policies` | List active cashback policies |
+| GET | `/api/internal/crm/bonus/policies/{policyId}` | Get active cashback policy (rate, rules) |
+| GET | `/api/internal/crm/players/{id}/cashback-metrics` | Period deposits/GGR for CRM eligibility |
+| POST | `/api/internal/crm/cashback/grant` | Grant CRM-evaluated cashback (dynamic amount) |
 | GET | `/api/internal/crm/players/{id}/summary` | Player snapshot |
 
 Header: `X-Service-Key: {CRM_SERVICE_KEY}` (backend validates).
@@ -125,6 +129,18 @@ composer dev
 ```
 
 Default CRM admin: `admin@crm.local` / `admin123`
+
+---
+
+## Cashback flow (CRM orchestration)
+
+1. **Backend** defines cashback `BonusPolicy` (rate %, wagering, period, provider, min deposit, VIP levels).
+2. **CRM** runs scheduled campaigns with action `cashback.process` targeting a segment.
+3. CRM evaluates eligibility using `GET /api/internal/crm/bonus/policies/{id}` + `GET /api/internal/crm/players/{id}/cashback-metrics`.
+4. CRM grants via `POST /api/internal/crm/cashback/grant` with pre-computed `amount` and `periodKey`.
+5. Backend credits wallet, creates wagering, publishes `bonus.created`.
+
+Fixed bonuses still use `POST /api/internal/crm/bonus/grant`. Cashback uses the dedicated cashback endpoints.
 
 ---
 
