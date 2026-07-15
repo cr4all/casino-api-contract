@@ -94,6 +94,15 @@ Derived from `casino-backend` → `EventPublisher`, domain Actions, and Consumer
 
 ## Player REST API
 
+## [1.9.0] - 2026-07-15
+
+### Added
+
+- Affiliate payout endpoints: `GET /affiliate/payouts/availability`, `GET|PUT /affiliate/payout-details`, `GET|POST /affiliate/payouts`
+- Schemas: `AffiliatePayoutAvailability`, `AffiliatePayoutDetails`, `UpdateAffiliatePayoutDetailsRequest`, `AffiliatePayout`, `AffiliatePayoutList`
+- `AffiliateStats.available_payout`, `AffiliateStats.accruing_commission`
+- `AffiliateCommission.status` value `reserved`
+
 ## [1.5.0] - 2026-06-18
 
 ### Added

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Casino Platform Player API
-  version: 1.8.0
+  version: 1.9.0
   description: |
     Player-facing REST API for the casino platform.
     Source of truth derived from `routes/api.php` and Feature Tests.
@@ -972,6 +972,119 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SuccessEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /affiliate/payouts/availability:
+    get:
+      tags: [Affiliate]
+      summary: Get available closed-month commission for payout
+      responses:
+        '200':
+          description: Payout availability
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AffiliatePayoutAvailability'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /affiliate/payout-details:
+    get:
+      tags: [Affiliate]
+      summary: Get saved payout destination details
+      responses:
+        '200':
+          description: Payout details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AffiliatePayoutDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    put:
+      tags: [Affiliate]
+      summary: Update payout destination details
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAffiliatePayoutDetailsRequest'
+      responses:
+        '200':
+          description: Payout details updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AffiliatePayoutDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /affiliate/payouts:
+    get:
+      tags: [Affiliate]
+      summary: List affiliate payout requests
+      parameters:
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Paginated payout requests
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AffiliatePayoutList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Affiliate]
+      summary: Request payout of available closed-month commission
+      responses:
+        '201':
+          description: Payout requested
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AffiliatePayout'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2436,7 +2549,7 @@ components:
 
     AffiliateStats:
       type: object
-      required: [referred_players_count, commissions_count, total_commission, pending_commission]
+      required: [referred_players_count, commissions_count, total_commission, pending_commission, available_payout, accruing_commission]
       properties:
         referred_players_count:
           type: integer
@@ -2446,6 +2559,10 @@ components:
           type: string
         pending_commission:
           type: string
+        available_payout:
+          type: string
+        accruing_commission:
+          type: string
         sub_affiliates_count:
           type: integer
         downline_players_count:
@@ -2454,6 +2571,121 @@ components:
           type: string
         pending_override_commission:
           type: string
+
+    AffiliatePayoutAvailability:
+      type: object
+      required:
+        - available_amount
+        - accruing_amount
+        - currency
+        - min_payout_amount
+        - can_request
+        - has_pending_request
+        - has_payout_details
+        - period_end
+      properties:
+        available_amount:
+          type: string
+        accruing_amount:
+          type: string
+        currency:
+          type: string
+          example: USD
+        min_payout_amount:
+          type: string
+        can_request:
+          type: boolean
+        has_pending_request:
+          type: boolean
+        has_payout_details:
+          type: boolean
+        period_end:
+          type: string
+          format: date
+        reason:
+          type: string
+          nullable: true
+          enum: [payout_details_required, pending_request_exists, no_available_balance, below_minimum, null]
+
+    AffiliatePayoutDetails:
+      type: object
+      required: [payout_details]
+      properties:
+        payout_details:
+          type: object
+          properties:
+            account_wallet_id:
+              type: string
+            note:
+              type: string
+          additionalProperties: true
+
+    UpdateAffiliatePayoutDetailsRequest:
+      type: object
+      required: [payout_details]
+      properties:
+        payout_details:
+          type: object
+          required: [account_wallet_id]
+          properties:
+            account_wallet_id:
+              type: string
+            note:
+              type: string
+
+    AffiliatePayout:
+      type: object
+      required: [id, period_start, period_end, total_amount, currency, status, payout_details]
+      properties:
+        id:
+          type: integer
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+        total_amount:
+          type: string
+        currency:
+          type: string
+        status:
+          type: string
+          enum: [requested, paid, rejected]
+        payout_details:
+          type: object
+          properties:
+            account_wallet_id:
+              type: string
+            note:
+              type: string
+          additionalProperties: true
+        rejection_reason:
+          type: string
+          nullable: true
+        paid_at:
+          type: string
+          format: date-time
+          nullable: true
+        rejected_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    AffiliatePayoutList:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AffiliatePayout'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
 
     AffiliateReferredPlayer:
       type: object
@@ -2498,7 +2730,7 @@ components:
           type: string
         status:
           type: string
-          enum: [pending, paid]
+          enum: [pending, reserved, paid]
         created_at:
           type: string
           format: date-time
