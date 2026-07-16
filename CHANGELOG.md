@@ -94,6 +94,12 @@ Derived from `casino-backend` → `EventPublisher`, domain Actions, and Consumer
 
 ## Player REST API
 
+## [1.10.0] - 2026-07-16
+
+### Added
+
+- Game favorites: `GET /games/favorites`, `POST /games/{id}/favorite`, `DELETE /games/{id}/favorite`
+
 ## [1.9.0] - 2026-07-15
 
 ### Added

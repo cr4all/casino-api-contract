@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Casino Platform Player API
-  version: 1.8.0
+  version: 1.10.0
   description: |
     Player-facing REST API for the casino platform.
     Source of truth derived from `routes/api.php` and Feature Tests.
@@ -20,7 +20,6 @@ tags:
   - name: Bonus
   - name: Affiliate
   - name: Notification
-  - name: SupportTicket
   - name: Game
 
 security:
@@ -270,6 +269,25 @@ paths:
                         $ref: '#/components/schemas/PlayerMe'
         '401':
           $ref: '#/components/responses/Unauthorized'
+
+  /player-levels/tiers:
+    get:
+      tags: [Player]
+      summary: List VIP tier catalog (0=Regular .. 6=VIP)
+      responses:
+        '200':
+          description: VIP tier catalog
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PlayerLevelTier'
 
   /player/profile:
     patch:
@@ -807,20 +825,8 @@ paths:
           in: query
           schema:
             type: string
-            enum: [today, last_week, last_month, custom]
-            default: today
-        - name: from
-          in: query
-          description: Start date (YYYY-MM-DD) when period=custom
-          schema:
-            type: string
-            format: date
-        - name: to
-          in: query
-          description: End date (YYYY-MM-DD) when period=custom
-          schema:
-            type: string
-            format: date
+            enum: [today, week, 30days, month]
+            default: week
         - $ref: '#/components/parameters/PerPage'
       responses:
         '200':
@@ -966,6 +972,119 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SuccessEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /affiliate/payouts/availability:
+    get:
+      tags: [Affiliate]
+      summary: Get available closed-month commission for payout
+      responses:
+        '200':
+          description: Payout availability
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AffiliatePayoutAvailability'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /affiliate/payout-details:
+    get:
+      tags: [Affiliate]
+      summary: Get saved payout destination details
+      responses:
+        '200':
+          description: Payout details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AffiliatePayoutDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    put:
+      tags: [Affiliate]
+      summary: Update payout destination details
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAffiliatePayoutDetailsRequest'
+      responses:
+        '200':
+          description: Payout details updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AffiliatePayoutDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /affiliate/payouts:
+    get:
+      tags: [Affiliate]
+      summary: List affiliate payout requests
+      parameters:
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Paginated payout requests
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AffiliatePayoutList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Affiliate]
+      summary: Request payout of available closed-month commission
+      responses:
+        '201':
+          description: Payout requested
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AffiliatePayout'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1443,6 +1562,37 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /games/favorites:
+    get:
+      tags: [Game]
+      summary: List player favorite games
+      parameters:
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Paginated favorite games
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [items, pagination]
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Game'
+                          pagination:
+                            $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /games/{id}:
     get:
       tags: [Game]
@@ -1466,6 +1616,72 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/Game'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /games/{id}/favorite:
+    post:
+      tags: [Game]
+      summary: Add a game to favorites (idempotent)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Favorite added
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [game_id, favorited]
+                        properties:
+                          game_id:
+                            type: integer
+                          favorited:
+                            type: boolean
+                            enum: [true]
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Game]
+      summary: Remove a game from favorites
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Favorite removed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [game_id, favorited]
+                        properties:
+                          game_id:
+                            type: integer
+                          favorited:
+                            type: boolean
+                            enum: [false]
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -1962,6 +2178,38 @@ components:
           nullable: true
           description: KYC verification status
           example: pending
+        vip_level:
+          type: integer
+          minimum: 0
+          maximum: 6
+          description: Current VIP tier level (0=Regular .. 6=VIP)
+          example: 0
+        vip_level_name:
+          type: string
+          description: Human-readable VIP tier name
+          example: Regular
+        vip_level_slug:
+          type: string
+          description: VIP tier slug for icon mapping
+          example: regular
+
+    PlayerLevelTier:
+      type: object
+      required: [level, name, slug, sort_order]
+      properties:
+        level:
+          type: integer
+          minimum: 0
+          maximum: 6
+        name:
+          type: string
+          example: Gold
+        slug:
+          type: string
+          example: gold
+        sort_order:
+          type: integer
+          minimum: 0
 
     PlayerProfileUpdate:
       allOf:
@@ -2049,6 +2297,25 @@ components:
             event_type:
               type: string
               example: payment.deposit
+
+    PlayerVipLevelEvent:
+      type: object
+      required: [player_id, previous_level, vip_level, vip_level_name, vip_level_slug]
+      properties:
+        player_id:
+          type: integer
+        previous_level:
+          type: integer
+          minimum: 0
+          maximum: 6
+        vip_level:
+          type: integer
+          minimum: 0
+          maximum: 6
+        vip_level_name:
+          type: string
+        vip_level_slug:
+          type: string
 
     WalletTransaction:
       type: object
@@ -2734,7 +3001,7 @@ components:
 
     AffiliateStats:
       type: object
-      required: [referred_players_count, commissions_count, total_commission, pending_commission]
+      required: [referred_players_count, commissions_count, total_commission, pending_commission, available_payout, accruing_commission]
       properties:
         referred_players_count:
           type: integer
@@ -2744,6 +3011,10 @@ components:
           type: string
         pending_commission:
           type: string
+        available_payout:
+          type: string
+        accruing_commission:
+          type: string
         sub_affiliates_count:
           type: integer
         downline_players_count:
@@ -2752,6 +3023,121 @@ components:
           type: string
         pending_override_commission:
           type: string
+
+    AffiliatePayoutAvailability:
+      type: object
+      required:
+        - available_amount
+        - accruing_amount
+        - currency
+        - min_payout_amount
+        - can_request
+        - has_pending_request
+        - has_payout_details
+        - period_end
+      properties:
+        available_amount:
+          type: string
+        accruing_amount:
+          type: string
+        currency:
+          type: string
+          example: USD
+        min_payout_amount:
+          type: string
+        can_request:
+          type: boolean
+        has_pending_request:
+          type: boolean
+        has_payout_details:
+          type: boolean
+        period_end:
+          type: string
+          format: date
+        reason:
+          type: string
+          nullable: true
+          enum: [payout_details_required, pending_request_exists, no_available_balance, below_minimum, null]
+
+    AffiliatePayoutDetails:
+      type: object
+      required: [payout_details]
+      properties:
+        payout_details:
+          type: object
+          properties:
+            account_wallet_id:
+              type: string
+            note:
+              type: string
+          additionalProperties: true
+
+    UpdateAffiliatePayoutDetailsRequest:
+      type: object
+      required: [payout_details]
+      properties:
+        payout_details:
+          type: object
+          required: [account_wallet_id]
+          properties:
+            account_wallet_id:
+              type: string
+            note:
+              type: string
+
+    AffiliatePayout:
+      type: object
+      required: [id, period_start, period_end, total_amount, currency, status, payout_details]
+      properties:
+        id:
+          type: integer
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+        total_amount:
+          type: string
+        currency:
+          type: string
+        status:
+          type: string
+          enum: [requested, paid, rejected]
+        payout_details:
+          type: object
+          properties:
+            account_wallet_id:
+              type: string
+            note:
+              type: string
+          additionalProperties: true
+        rejection_reason:
+          type: string
+          nullable: true
+        paid_at:
+          type: string
+          format: date-time
+          nullable: true
+        rejected_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    AffiliatePayoutList:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AffiliatePayout'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
 
     AffiliateReferredPlayer:
       type: object
@@ -2796,7 +3182,7 @@ components:
           type: string
         status:
           type: string
-          enum: [pending, paid]
+          enum: [pending, reserved, paid]
         created_at:
           type: string
           format: date-time
@@ -2816,19 +3202,21 @@ components:
     PlayerStatisticsMetrics:
       type: object
       required:
+        - total_bet
+        - total_win
         - deposits
         - withdrawals
         - cash_turnover
         - bonus_turnover
-        - cash_win
-        - bonus_win
-        - total_turnover
-        - total_win
         - ggr
         - bonus_cost
         - affiliate_cost
         - ngr
       properties:
+        total_bet:
+          type: string
+        total_win:
+          type: string
         deposits:
           type: string
         withdrawals:
@@ -2836,14 +3224,6 @@ components:
         cash_turnover:
           type: string
         bonus_turnover:
-          type: string
-        cash_win:
-          type: string
-        bonus_win:
-          type: string
-        total_turnover:
-          type: string
-        total_win:
           type: string
         ggr:
           type: string
@@ -2875,15 +3255,7 @@ components:
       properties:
         period:
           type: string
-          enum: [today, last_week, last_month, custom]
-        from:
-          type: string
-          format: date
-          nullable: true
-        to:
-          type: string
-          format: date
-          nullable: true
+          enum: [today, week, 30days, month]
         items:
           type: array
           items:
@@ -2994,3 +3366,23 @@ x-realtime:
     event: balance.updated
     payload:
       $ref: '#/components/schemas/WalletBalanceEvent'
+  playerVipLevel:
+    summary: Real-time VIP level updates (WebSocket)
+    description: |
+      Subscribe via Laravel Reverb (Pusher protocol) for live VIP level changes.
+      Initial level should be fetched with `GET /player/me`.
+    connection:
+      url: "ws(s)://{REVERB_HOST}:{REVERB_PORT}/app/{REVERB_APP_KEY}"
+      protocol: websocket
+    auth:
+      method: POST
+      url: /api/broadcasting/auth
+      security:
+        - bearerAuth: []
+      body:
+        channel_name: private-player.{playerId}
+        socket_id: string
+    channel: private-player.{playerId}
+    event: vip.level.updated
+    payload:
+      $ref: '#/components/schemas/PlayerVipLevelEvent'
