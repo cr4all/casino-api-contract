@@ -611,6 +611,49 @@ paths:
         '422':
           $ref: '#/components/responses/ValidationError'
 
+  /payment/withdrawals/quote:
+    get:
+      tags: [Payment]
+      summary: Estimate local payout amount for a wallet withdrawal amount (FX preview)
+      parameters:
+        - name: option_key
+          in: query
+          required: true
+          schema:
+            type: string
+            example: local:4:ID:BCA
+        - name: amount
+          in: query
+          required: true
+          schema:
+            type: string
+            example: '100.0000'
+            description: Wallet currency amount (USD by default)
+        - name: country
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 2
+            example: ID
+      responses:
+        '200':
+          description: Withdrawal payout estimate
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WithdrawQuote'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
   /payment/withdrawals:
     get:
       tags: [Payment]
@@ -2561,6 +2604,35 @@ components:
           type: boolean
           description: True for preview; final credit is determined at payment confirmation
 
+    WithdrawQuote:
+      type: object
+      required:
+        - wallet_amount
+        - wallet_currency
+        - payment_amount
+        - payment_currency
+        - exchange_rate
+        - is_estimate
+      properties:
+        wallet_amount:
+          type: string
+        wallet_currency:
+          type: string
+        payment_amount:
+          type: string
+        payment_currency:
+          type: string
+        exchange_rate:
+          type: string
+        exchange_rate_at:
+          type: string
+          format: date-time
+        rate_display:
+          type: string
+        is_estimate:
+          type: boolean
+          description: True for preview; final payout amount is locked when payout is submitted
+
     DepositCreated:
       type: object
       required: [deposit_id, status, amount, payment_info]
@@ -2592,6 +2664,13 @@ components:
           type: string
         amount:
           type: string
+        currency:
+          type: string
+        estimated_payout:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/WithdrawQuote'
 
     DepositItem:
       type: object
@@ -2636,6 +2715,12 @@ components:
           type: string
         currency:
           type: string
+        payment_amount:
+          type: string
+          nullable: true
+        payment_currency:
+          type: string
+          nullable: true
         status:
           type: string
         payment_method:
