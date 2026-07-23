@@ -94,6 +94,12 @@ Derived from `casino-backend` → `EventPublisher`, domain Actions, and Consumer
 
 ## Player REST API
 
+## [1.11.0] - 2026-07-23
+
+### Added
+
+- `PaymentOption.kind` value `credit_card` — SmilePayz hosted credit card deposit (USD / EUR)
+
 ## [1.10.0] - 2026-07-16
 
 ### Added

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Casino Platform Player API
-  version: 1.10.0
+  version: 1.11.0
   description: |
     Player-facing REST API for the casino platform.
     Source of truth derived from `routes/api.php` and Feature Tests.
@@ -2511,7 +2511,7 @@ components:
           type: integer
         kind:
           type: string
-          enum: [local, crypto, manual]
+          enum: [local, crypto, manual, credit_card]
         provider:
           type: string
           nullable: true
