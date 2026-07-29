@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Casino Platform Player API
-  version: 1.11.0
+  version: 1.12.0
   description: |
     Player-facing REST API for the casino platform.
     Source of truth derived from `routes/api.php` and Feature Tests.
@@ -290,6 +290,27 @@ paths:
                         $ref: '#/components/schemas/PlayerMe'
         '401':
           $ref: '#/components/responses/Unauthorized'
+
+  /player/invite:
+    get:
+      tags: [Player]
+      summary: Get Invite a Friend program overview for the current player
+      responses:
+        '200':
+          description: Invite program overview
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PlayerInviteOverview'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /player-levels/tiers:
     get:
@@ -2087,6 +2108,11 @@ components:
           type: string
           maxLength: 50
           nullable: true
+        invite_code:
+          type: string
+          maxLength: 20
+          nullable: true
+          description: Player Invite a Friend code (ignored when affiliate_code is attributed)
         risk_context:
           $ref: '#/components/schemas/ClientRiskContext'
 
@@ -2269,6 +2295,108 @@ components:
           type: string
           description: VIP tier slug for icon mapping
           example: regular
+
+    PlayerInviteOverview:
+      type: object
+      required:
+        - enabled
+        - code
+        - invite_link
+        - min_deposit_amount
+        - currency
+        - stats
+        - referrals
+      properties:
+        enabled:
+          type: boolean
+        code:
+          type: string
+          example: AB12CD34
+        invite_link:
+          type: string
+          example: https://example.com/?invite=AB12CD34
+        min_deposit_amount:
+          type: string
+          example: '20.0000'
+        currency:
+          type: string
+          example: USD
+        referrer_reward:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/PlayerInviteRewardSummary'
+        invitee_reward:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/PlayerInviteRewardSummary'
+        stats:
+          $ref: '#/components/schemas/PlayerInviteStats'
+        referrals:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlayerInviteReferralItem'
+
+    PlayerInviteRewardSummary:
+      type: object
+        required: [name, amount, amount_type, wagering_multiplier]
+      properties:
+        name:
+          type: string
+        amount:
+          type: string
+        amount_type:
+          type: string
+          enum: [fixed, percentage]
+        wagering_multiplier:
+          type: string
+        provider_slug:
+          type: string
+          nullable: true
+          description: Game provider where the bonus balance can be wagered
+
+    PlayerInviteStats:
+      type: object
+      required: [invited, pending, rewarded, rejected]
+      properties:
+        invited:
+          type: integer
+        pending:
+          type: integer
+        rewarded:
+          type: integer
+        rejected:
+          type: integer
+
+    PlayerInviteReferralItem:
+      type: object
+      required: [id, status, friend]
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum: [pending, qualified, rewarded, rejected]
+        registered_at:
+          type: string
+          format: date-time
+          nullable: true
+        qualified_at:
+          type: string
+          format: date-time
+          nullable: true
+        rewarded_at:
+          type: string
+          format: date-time
+          nullable: true
+        friend:
+          type: object
+          properties:
+            nickname:
+              type: string
+              nullable: true
+            email:
+              type: string
+              nullable: true
 
     PlayerLevelTier:
       type: object
