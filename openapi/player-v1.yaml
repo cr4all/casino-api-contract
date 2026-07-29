@@ -62,6 +62,27 @@ paths:
                       data:
                         $ref: '#/components/schemas/SessionPolicyData'
 
+  /payment/withdrawal-verification-limits:
+    get:
+      tags: [Payment]
+      summary: Public withdrawal verification limit settings
+      description: >
+        Returns the platform withdrawal amount limits configured by admins for
+        email-verified and phone-verified players. KYC-verified players have no limit.
+      security: []
+      responses:
+        '200':
+          description: Withdrawal verification limits
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WithdrawalVerificationLimitsData'
+
   /auth/register:
     post:
       tags: [Auth]
@@ -1937,6 +1958,19 @@ components:
           minimum: 0
           maximum: 480
           description: Minutes of inactivity before automatic logout. 0 disables idle logout.
+
+    WithdrawalVerificationLimitsData:
+      type: object
+      required: [email_verified_limit, phone_verified_limit]
+      properties:
+        email_verified_limit:
+          type: string
+          description: Max withdrawal amount when only email is verified (wallet currency).
+          example: "100000.0000"
+        phone_verified_limit:
+          type: string
+          description: Max withdrawal amount when only phone is verified (wallet currency).
+          example: "100000.0000"
 
     RegistrationCurrency:
       type: object
