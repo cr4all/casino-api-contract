@@ -806,6 +806,42 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /bonus/{playerBonusId}/forfeit:
+    post:
+      tags: [Bonus]
+      summary: Forfeit an active player bonus
+      description: >
+        Cancels the player's active bonus (any type, including free spins) and forfeits
+        remaining bonus wallet funds / provider free spins.
+        Use this to unlock withdrawals while a sticky bonus lock is active.
+      parameters:
+        - name: playerBonusId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Bonus forfeited
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/BonusForfeited'
+                      message:
+                        type: string
+                        example: Bonus forfeited.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
   /bonus/{policyId}/claim:
     post:
       tags: [Bonus]
@@ -2487,7 +2523,9 @@ components:
           example: '0.0000'
         bonus_locked:
           type: boolean
-          description: True when active bonus wagering prevents bonus withdrawal.
+          description: >
+            True when any active bonus (including free spins) locks withdrawals
+            (cash and bonus) until the bonus completes/expires or the player forfeits it.
         status:
           type: string
 
@@ -3009,6 +3047,18 @@ components:
         provider_bonus_id:
           type: integer
           nullable: true
+
+    BonusForfeited:
+      type: object
+      required: [bonus_id, amount, status]
+      properties:
+        bonus_id:
+          type: integer
+        amount:
+          type: string
+        status:
+          type: string
+          example: cancelled
 
     InternalMessage:
       type: object
