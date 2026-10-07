@@ -1,0 +1,786 @@
+openapi: 3.0.3
+info:
+  title: Casino Game Hub — Wallet Callback API
+  version: 1.0.0
+  description: |
+    Wallet callback endpoints that `casino-game-hub` calls on the **Platform**
+    (`casino-backend`) during active game sessions.
+
+    ## Overview
+
+    ```
+    Game Provider  ──inbound──►  Hub /provider/{slug}/*
+                                     │
+                                     ▼  (outgoing callbacks defined here)
+                                 Platform /wallet/{balance|bet|win|refund|...}
+    ```
+
+    When a game provider sends a wallet event (balance check, bet, win, refund)
+    to the Hub, the Hub translates it, enriches it with catalog metadata, and
+    forwards it to the Platform wallet endpoints listed in this document.
+
+    **The Platform must implement all endpoints in this spec.**
+
+    ## Authentication
+
+    Hub authenticates each request with the `X-Hub-Service-Key` header.
+    The key is the per-tenant service key stored in `tenants.service_key`
+    (or the default key from Hub configuration).
+
+    ## Base URL
+
+    The base URL is configurable per tenant via `tenants.wallet_base_url`
+    (or `GAME_HUB_PLATFORM_WALLET_URL` for the default tenant).
+
+    ## Money format
+
+    All monetary amounts are **strings** with exactly **4 decimal places**
+    (e.g. `"100.0000"`, `"0.2500"`). Default currency is USD.
+
+    ## Response envelope
+
+    Platform must respond with the standard `{success, data, message}` envelope.
+    On error, return `{success: false, error: {code, message}}`.
+
+    ## Special HTTP status codes
+
+    | Status | Error code | Meaning |
+    |--------|-----------|---------|
+    | 422 | `INSUFFICIENT_BALANCE` | Player has insufficient balance for the bet |
+    | 409 | _(any)_ | Duplicate transaction — Hub treats it as idempotent success |
+    | 404 | _(any)_ | Original transaction not found (for refunds) |
+
+    ## Source of truth
+
+    Derived from `app/Infrastructure/WalletProxy/HttpWalletGateway.php` and
+    `app/Domains/Game/Contracts/WalletGatewayInterface.php` in `casino-game-hub`.
+
+servers:
+  - url: http://localhost:8000
+    description: Local Platform development
+  - url: https://api.example.com
+    description: Production Platform
+
+tags:
+  - name: WalletCallback
+    description: Wallet operations triggered by game provider callbacks
+
+paths:
+  /wallet/balance:
+    post:
+      operationId: walletBalance
+      tags: [WalletCallback]
+      summary: Get player wallet balance
+      description: >
+        Called by Hub when a game provider requests the player's current
+        balance (e.g. on game load or after a round).
+
+        Platform should return the **playable balance** — the total of cash
+        and active bonus funds available to the player.
+      security:
+        - hubServiceKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WalletBalanceRequest'
+            example:
+              player_id: 4231
+              provider_slug: booming
+              session_token: dGhpcyBpcyBhIHNhbXBsZSB0b2tlbg==
+              tenant_slug: default
+      responses:
+        '200':
+          description: Player balance
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WalletBalanceData'
+              example:
+                success: true
+                data:
+                  balance: '1250.5000'
+                  playable_balance: '1250.5000'
+                message: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /wallet/bet:
+    post:
+      operationId: walletBet
+      tags: [WalletCallback]
+      summary: Debit a bet from the player wallet
+      description: >
+        Called by Hub when a game provider places a bet.
+
+        Platform deducts `amount` from the player's wallet, creates a ledger
+        entry, and returns the updated balance along with ledger IDs and bonus
+        metadata.
+
+        If the player has insufficient balance, respond with HTTP 422 and
+        `error.code = INSUFFICIENT_BALANCE`.
+
+        Idempotency: if the same `reference_id` has been processed before,
+        respond with HTTP 409 and return the original transaction data in `data`.
+      security:
+        - hubServiceKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WalletBetRequest'
+            example:
+              player_id: 4231
+              session_token: dGhpcyBpcyBhIHNhbXBsZSB0b2tlbg==
+              provider_slug: booming
+              tenant_slug: default
+              amount: '10.0000'
+              reference_id: round_booming_abc123
+              reference_type: game_round
+              currency: USD
+              game_id: 5001
+              provider_round_id: abc123
+              funding_source: cash
+              metadata:
+                game_code: vs20fruitsw
+      responses:
+        '200':
+          description: Bet accepted — wallet debited
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WalletBetData'
+              example:
+                success: true
+                data:
+                  playable_balance: '1240.5000'
+                  cash_amount: '10.0000'
+                  bonus_amount: '0.0000'
+                  funding_source: cash
+                  player_bonus_id: null
+                  policy_id: null
+                  cash_ledger_id: 78001
+                  bonus_ledger_id: null
+                  game_round_id: 55001
+                  bet_ledger_id: 78001
+                message: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/DuplicateTransaction'
+        '422':
+          $ref: '#/components/responses/InsufficientBalance'
+
+  /wallet/win:
+    post:
+      operationId: walletWin
+      tags: [WalletCallback]
+      summary: Credit a win to the player wallet
+      description: >
+        Called by Hub when a game provider reports a win payout.
+
+        Platform credits `amount` to the player's wallet and returns the
+        updated balance. A win of `"0.0000"` is valid (no-win round settlement).
+
+        Idempotency: duplicate `reference_id` → HTTP 409.
+      security:
+        - hubServiceKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WalletWinRequest'
+            example:
+              player_id: 4231
+              session_token: dGhpcyBpcyBhIHNhbXBsZSB0b2tlbg==
+              provider_slug: booming
+              tenant_slug: default
+              amount: '25.0000'
+              reference_id: round_booming_abc123_win
+              reference_type: game_round
+              currency: USD
+              game_id: 5001
+              provider_round_id: abc123
+              funding_source: cash
+              metadata:
+                game_code: vs20fruitsw
+      responses:
+        '200':
+          description: Win credited
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WalletWinData'
+              example:
+                success: true
+                data:
+                  playable_balance: '1265.5000'
+                  win_cash_amount: '25.0000'
+                  win_bonus_amount: '0.0000'
+                  cash_ledger_id: 78002
+                  bonus_ledger_id: null
+                  game_round_id: 55001
+                  win_ledger_id: 78002
+                message: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/DuplicateTransaction'
+
+  /wallet/refund:
+    post:
+      operationId: walletRefund
+      tags: [WalletCallback]
+      summary: Refund / rollback a previous bet transaction
+      description: >
+        Called by Hub when a game provider cancels or rolls back a bet (e.g.
+        game error, cancelled round).
+
+        Platform reverses the original bet ledger entry and returns the updated
+        balance. If the original transaction has already been refunded, Platform
+        should set `already_refunded: true` and return the current balance
+        without creating a duplicate ledger entry.
+
+        If the original transaction cannot be found, respond with HTTP 404.
+      security:
+        - hubServiceKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WalletRefundRequest'
+            example:
+              player_id: 4231
+              session_token: dGhpcyBpcyBhIHNhbXBsZSB0b2tlbg==
+              provider_slug: booming
+              tenant_slug: default
+              amount: '10.0000'
+              reference_id: round_booming_abc123_refund
+              reference_type: game_round
+              currency: USD
+              game_id: 5001
+              provider_round_id: abc123
+              metadata:
+                game_code: vs20fruitsw
+      responses:
+        '200':
+          description: Refund processed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WalletRefundData'
+              example:
+                success: true
+                data:
+                  playable_balance: '1250.5000'
+                  ledger_id: 78003
+                  game_round_id: 55001
+                  already_refunded: false
+                message: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Original bet transaction not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          $ref: '#/components/responses/DuplicateTransaction'
+
+  /wallet/transfer-in:
+    post:
+      operationId: walletTransferIn
+      tags: [WalletCallback]
+      summary: Recover funds from provider wallet back to platform wallet
+      description: >
+        Called by Hub before a **GameBoy** game launch to recover any provider
+        balance stranded in the provider-side wallet back to the Platform wallet.
+
+        This is part of the GameBoy transfer-mode flow:
+        1. `transfer-in` — recover existing provider balance → Platform
+        2. (provider ensured)
+        3. `transfer-out` — fund provider with launch amount
+
+        Other providers do not use this endpoint.
+      security:
+        - hubServiceKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WalletTransferRequest'
+            example:
+              player_id: 4231
+              session_token: dGhpcyBpcyBhIHNhbXBsZSB0b2tlbg==
+              provider_slug: gameboy
+              tenant_slug: default
+              amount: '50.0000'
+              reference_id: transfer_recover_uuid123
+              currency: USD
+      responses:
+        '200':
+          description: Transfer-in processed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WalletTransferData'
+              example:
+                success: true
+                data:
+                  amount: '50.0000'
+                  playable_balance: '1300.5000'
+                  ledger_id: 78010
+                message: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/DuplicateTransaction'
+
+  /wallet/transfer-out:
+    post:
+      operationId: walletTransferOut
+      tags: [WalletCallback]
+      summary: Fund provider wallet from platform wallet before launch
+      description: >
+        Called by Hub immediately before a **GameBoy** game launch to move
+        funds from the Platform wallet into the provider-side wallet so the
+        player's balance is available inside the game.
+
+        Other providers do not use this endpoint.
+      security:
+        - hubServiceKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WalletTransferRequest'
+            example:
+              player_id: 4231
+              session_token: dGhpcyBpcyBhIHNhbXBsZSB0b2tlbg==
+              provider_slug: gameboy
+              tenant_slug: default
+              amount: '200.0000'
+              reference_id: transfer_fund_uuid123
+              currency: USD
+      responses:
+        '200':
+          description: Transfer-out processed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WalletTransferData'
+              example:
+                success: true
+                data:
+                  amount: '200.0000'
+                  playable_balance: '1100.5000'
+                  ledger_id: 78011
+                message: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/DuplicateTransaction'
+        '422':
+          $ref: '#/components/responses/InsufficientBalance'
+
+components:
+  securitySchemes:
+    hubServiceKey:
+      type: apiKey
+      in: header
+      name: X-Hub-Service-Key
+      description: >
+        Per-tenant service key that Hub attaches to every outgoing wallet
+        request. Platform must validate this key before processing.
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid X-Hub-Service-Key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            error:
+              code: UNAUTHORIZED
+              message: Invalid or missing service key.
+
+    InsufficientBalance:
+      description: Player has insufficient playable balance for the requested debit
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            error:
+              code: INSUFFICIENT_BALANCE
+              message: Insufficient balance.
+
+    DuplicateTransaction:
+      description: >
+        Transaction with the same `reference_id` has already been processed.
+        Hub treats this as idempotent success and uses the `data` payload
+        returned here as the canonical result.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                enum: [false]
+              error:
+                type: object
+              data:
+                description: Original transaction result (same shape as the 200 response data)
+                type: object
+                additionalProperties: true
+          example:
+            success: false
+            error:
+              code: DUPLICATE_TRANSACTION
+              message: Transaction already processed.
+            data:
+              playable_balance: '1240.5000'
+              cash_amount: '10.0000'
+              bonus_amount: '0.0000'
+              funding_source: cash
+              player_bonus_id: null
+              policy_id: null
+              cash_ledger_id: 78001
+              bonus_ledger_id: null
+              game_round_id: 55001
+              bet_ledger_id: 78001
+
+  schemas:
+    # ── Envelope ─────────────────────────────────────────────────────────────
+
+    SuccessEnvelope:
+      type: object
+      required: [success, data, message]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data: {}
+        message:
+          type: string
+          nullable: true
+
+    ErrorEnvelope:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: INSUFFICIENT_BALANCE
+            message:
+              type: string
+              example: Insufficient balance.
+
+    DecimalAmount:
+      type: string
+      description: Non-negative monetary amount with exactly 4 decimal places. Default currency is USD.
+      pattern: '^\d+\.\d{4}$'
+      example: '100.0000'
+
+    # ── Common request fields ─────────────────────────────────────────────────
+
+    WalletRequestBase:
+      description: Fields common to all wallet callback requests
+      type: object
+      required: [player_id]
+      properties:
+        player_id:
+          type: integer
+          description: Platform player ID
+          example: 4231
+        session_token:
+          type: string
+          nullable: true
+          description: >
+            Hub game session token. Used by Platform to resolve the active
+            game session and validate the request context.
+          example: dGhpcyBpcyBhIHNhbXBsZSB0b2tlbg==
+        provider_slug:
+          type: string
+          nullable: true
+          description: Hub provider slug (e.g. `booming`, `cq9`)
+          example: booming
+        tenant_slug:
+          type: string
+          nullable: true
+          description: Tenant slug for multi-tenant deployments
+          example: default
+        currency:
+          type: string
+          nullable: true
+          description: Player wallet currency (ISO 4217). Defaults to USD.
+          default: USD
+          example: USD
+
+    WalletTransactionBase:
+      description: Additional fields common to transactional requests (bet / win / refund)
+      allOf:
+        - $ref: '#/components/schemas/WalletRequestBase'
+        - type: object
+          required: [amount, reference_id, reference_type]
+          properties:
+            amount:
+              $ref: '#/components/schemas/DecimalAmount'
+            reference_id:
+              type: string
+              description: >
+                Provider-native transaction reference used as idempotency key.
+                Platform must deduplicate on this value.
+              example: round_booming_abc123
+            reference_type:
+              type: string
+              description: Transaction category (always `game_round` for provider callbacks)
+              example: game_round
+            game_id:
+              type: integer
+              nullable: true
+              description: Hub `games.id` — resolved from session by Hub when available
+              example: 5001
+            provider_round_id:
+              type: string
+              nullable: true
+              description: Provider-native round / bet ID
+              example: abc123
+            funding_source:
+              type: string
+              nullable: true
+              enum: [cash, bonus, mixed, free_spin]
+              description: >
+                Funding source of the bet/win. Determines how Platform records
+                and applies bonus wagering requirements.
+              example: cash
+            metadata:
+              type: object
+              nullable: true
+              description: >
+                Provider-specific metadata forwarded by Hub. Always includes
+                `game_code` (provider-native game identifier) when resolvable.
+              properties:
+                game_code:
+                  type: string
+                  description: Provider-native game code
+                  example: vs20fruitsw
+              additionalProperties: true
+
+    # ── Balance ───────────────────────────────────────────────────────────────
+
+    WalletBalanceRequest:
+      allOf:
+        - $ref: '#/components/schemas/WalletRequestBase'
+
+    WalletBalanceData:
+      type: object
+      description: >
+        Hub accepts either `balance` or `playable_balance`; prefer
+        `playable_balance` to be explicit.
+      properties:
+        balance:
+          $ref: '#/components/schemas/DecimalAmount'
+        playable_balance:
+          $ref: '#/components/schemas/DecimalAmount'
+
+    # ── Bet ───────────────────────────────────────────────────────────────────
+
+    WalletBetRequest:
+      allOf:
+        - $ref: '#/components/schemas/WalletTransactionBase'
+
+    WalletBetData:
+      type: object
+      description: >
+        Bet debit result. Hub maps `cash_ledger_id` / `bet_ledger_id`
+        interchangeably; Platform should include at least one of them.
+      properties:
+        playable_balance:
+          $ref: '#/components/schemas/DecimalAmount'
+        cash_amount:
+          $ref: '#/components/schemas/DecimalAmount'
+        bonus_amount:
+          $ref: '#/components/schemas/DecimalAmount'
+        funding_source:
+          type: string
+          enum: [cash, bonus, mixed, free_spin]
+          example: cash
+        player_bonus_id:
+          type: integer
+          nullable: true
+          description: Active player bonus ID if the bet used bonus funds
+          example: null
+        policy_id:
+          type: integer
+          nullable: true
+          description: Bonus policy ID associated with this bet
+          example: null
+        cash_ledger_id:
+          type: integer
+          nullable: true
+          description: Ledger entry ID for the cash debit portion
+          example: 78001
+        bonus_ledger_id:
+          type: integer
+          nullable: true
+          description: Ledger entry ID for the bonus debit portion
+          example: null
+        game_round_id:
+          type: integer
+          nullable: true
+          description: Platform `game_rounds.id` created or updated for this round
+          example: 55001
+        bet_ledger_id:
+          type: integer
+          nullable: true
+          description: Primary bet ledger ID (alias for `cash_ledger_id` on some Platform versions)
+          example: 78001
+
+    # ── Win ───────────────────────────────────────────────────────────────────
+
+    WalletWinRequest:
+      allOf:
+        - $ref: '#/components/schemas/WalletTransactionBase'
+
+    WalletWinData:
+      type: object
+      description: >
+        Win credit result. Hub maps `cash_ledger_id` / `win_ledger_id`
+        interchangeably; Platform should include at least one of them.
+      properties:
+        playable_balance:
+          $ref: '#/components/schemas/DecimalAmount'
+        win_cash_amount:
+          $ref: '#/components/schemas/DecimalAmount'
+        win_bonus_amount:
+          $ref: '#/components/schemas/DecimalAmount'
+        cash_ledger_id:
+          type: integer
+          nullable: true
+          description: Ledger entry ID for the cash credit portion
+          example: 78002
+        bonus_ledger_id:
+          type: integer
+          nullable: true
+          description: Ledger entry ID for the bonus credit portion
+          example: null
+        game_round_id:
+          type: integer
+          nullable: true
+          description: Platform `game_rounds.id` updated for this round
+          example: 55001
+        win_ledger_id:
+          type: integer
+          nullable: true
+          description: Primary win ledger ID (alias for `cash_ledger_id` on some Platform versions)
+          example: 78002
+
+    # ── Refund ────────────────────────────────────────────────────────────────
+
+    WalletRefundRequest:
+      allOf:
+        - $ref: '#/components/schemas/WalletTransactionBase'
+
+    WalletRefundData:
+      type: object
+      properties:
+        playable_balance:
+          $ref: '#/components/schemas/DecimalAmount'
+        ledger_id:
+          type: integer
+          nullable: true
+          description: Ledger entry ID for the refund credit
+          example: 78003
+        game_round_id:
+          type: integer
+          nullable: true
+          description: Platform `game_rounds.id` associated with the refunded round
+          example: 55001
+        already_refunded:
+          type: boolean
+          description: >
+            `true` if the original transaction was already refunded. Hub
+            treats this as a success and does not re-credit the player.
+          example: false
+
+    # ── Transfer (GameBoy only) ───────────────────────────────────────────────
+
+    WalletTransferRequest:
+      description: >
+        Used only by the GameBoy provider transfer-mode flow. Fields are a
+        subset of the standard transaction base.
+      allOf:
+        - $ref: '#/components/schemas/WalletRequestBase'
+        - type: object
+          required: [amount, reference_id]
+          properties:
+            amount:
+              $ref: '#/components/schemas/DecimalAmount'
+            reference_id:
+              type: string
+              description: >
+                UUID generated by Hub per launch operation. Used as idempotency
+                key to prevent double-transfers on retry.
+              example: transfer_recover_550e8400-e29b-41d4-a716-446655440001
+
+    WalletTransferData:
+      type: object
+      properties:
+        amount:
+          $ref: '#/components/schemas/DecimalAmount'
+        playable_balance:
+          $ref: '#/components/schemas/DecimalAmount'
+        ledger_id:
+          type: integer
+          nullable: true
+          description: Ledger entry ID for this transfer
+          example: 78010

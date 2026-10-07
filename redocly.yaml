@@ -4,6 +4,10 @@ extends:
 apis:
   player@v1:
     root: openapi/player-v1.yaml
+  hub-internal@v1:
+    root: openapi/hub-internal-v1.yaml
+  hub-wallet-callback@v1:
+    root: openapi/hub-wallet-callback-v1.yaml
 
 rules:
   no-unused-components: warn

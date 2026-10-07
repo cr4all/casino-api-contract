@@ -4,6 +4,89 @@ All notable changes to integration contracts in this repository are documented h
 
 Format follows [Semantic Versioning](https://semver.org/).
 
+---
+
+## Hub Internal API
+
+### [hub-internal-1.0.0] - 2026-10-07
+
+**Spec:** `openapi/hub-internal-v1.yaml`
+
+**Added:**
+
+Initial contract for the `casino-game-hub` service-to-service REST API.
+
+**Public game catalog (no auth):**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/games` | Paginated game list with vendor / type / collection / search filters |
+| GET | `/api/v1/games/{id}` | Game detail by Hub internal ID |
+| GET | `/api/v1/games/vendors` | Active vendor list (optional `?type` filter) |
+| GET | `/api/v1/games/types` | Active game type list |
+| GET | `/api/v1/games/collections/{slug}` | Curated collection with embedded games |
+
+**Launch (requires `X-Hub-Service-Key`):**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/v1/games/{id}/launch` | Launch session by Hub game ID |
+| POST | `/api/v1/games/launch` | Launch session by `provider_slug` + `external_code` |
+
+**Admin / sync (requires `X-Hub-Service-Key`):**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/providers` | All registered providers sorted by slug |
+| GET | `/api/v1/catalog/export` | Full catalog snapshot (providers, vendors, halls, games) |
+
+**Schemas:** `Game`, `GameVendor`, `GameVendorRef`, `GameType`, `GameTypeRef`, `GameProviderRef`, `GameCollection`, `GameLaunchRequest`, `GameLaunchByCodeRequest`, `GameLaunchResult`, `GameProvider`, `CatalogExport`, `CatalogProvider`, `CatalogVendor`, `CatalogHall`, `CatalogGame`, `Pagination`, `SuccessEnvelope`, `ErrorEnvelope`
+
+Derived from `routes/api.php`, `GameController`, `LaunchGameAction`, `FormatGameAction`, `ListGameVendorsAction`, `ListGameTypesAction`, `GetGameCollectionAction`, `ListProvidersAction`, `ExportGameCatalogAction` in `casino-game-hub`.
+
+---
+
+## Hub Wallet Callback API
+
+### [hub-wallet-callback-1.0.0] - 2026-10-07
+
+**Spec:** `openapi/hub-wallet-callback-v1.yaml`
+
+**Added:**
+
+Initial contract for the outgoing wallet callbacks that `casino-game-hub` sends
+to the Platform (`casino-backend`) during active game sessions.
+
+```
+Game Provider ──► Hub /provider/{slug}/*
+                      │  (callbacks defined here)
+                      ▼
+               Platform /wallet/{endpoint}
+```
+
+**Endpoints (Platform must implement, Hub calls with `X-Hub-Service-Key`):**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/wallet/balance` | Get player playable balance |
+| POST | `/wallet/bet` | Debit bet from player wallet |
+| POST | `/wallet/win` | Credit win to player wallet |
+| POST | `/wallet/refund` | Refund / rollback a previous bet |
+| POST | `/wallet/transfer-in` | Recover provider balance → Platform (GameBoy only) |
+| POST | `/wallet/transfer-out` | Fund provider wallet from Platform (GameBoy only) |
+
+**Special status codes:**
+
+- `422 INSUFFICIENT_BALANCE` — player cannot cover the bet
+- `409` — duplicate `reference_id`; Hub treats as idempotent success using `data` in response
+- `404` — original transaction not found (refund only)
+
+**Schemas:** `WalletRequestBase`, `WalletTransactionBase`, `WalletBalanceRequest`, `WalletBalanceData`, `WalletBetRequest`, `WalletBetData`, `WalletWinRequest`, `WalletWinData`, `WalletRefundRequest`, `WalletRefundData`, `WalletTransferRequest`, `WalletTransferData`, `DecimalAmount`, `SuccessEnvelope`, `ErrorEnvelope`
+
+Derived from `HttpWalletGateway`, `WalletGatewayInterface`, and `BetFundingSource` enum in `casino-game-hub`.
+
+---
+
 ## Platform Events
 
 ### [crm-integration-1.1.0] - 2026-07-08

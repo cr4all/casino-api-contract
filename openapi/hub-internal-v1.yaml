@@ -1,0 +1,927 @@
+openapi: 3.0.3
+info:
+  title: Casino Game Hub — Internal API
+  version: 1.0.0
+  description: |
+    Service-to-service API exposed by `casino-game-hub`.
+
+    **Consumers:** `casino-backend` (Platform) and authorised partner integrators.
+
+    ## Authentication
+
+    - **Public endpoints** (game catalog browse) — no authentication required.
+    - **Protected endpoints** (launch, providers list, catalog export) — require
+      the `X-Hub-Service-Key` header. The key is provisioned per tenant in Hub
+      configuration.
+
+    ## Response envelope
+
+    All responses use the standard `{success, data, message}` envelope defined
+    by `ApiResponse`. Error responses use `{success: false, error: {code, message}}`.
+
+    ## Source of truth
+
+    Derived from `routes/api.php` and Feature Tests in `casino-game-hub`.
+
+servers:
+  - url: http://localhost:8100/api/v1
+    description: Local Hub development
+  - url: https://hub.example.com/api/v1
+    description: Production Hub
+
+tags:
+  - name: Catalog
+    description: Public game catalog browsing — no auth required
+  - name: Launch
+    description: Game session launch — requires X-Hub-Service-Key
+  - name: Admin
+    description: Provider and catalog management — requires X-Hub-Service-Key
+
+security: []
+
+paths:
+  # ─── Public catalog ────────────────────────────────────────────────────────
+
+  /games/vendors:
+    get:
+      operationId: listGameVendors
+      tags: [Catalog]
+      summary: List active game vendors
+      description: >
+        Returns all active vendors. Optionally filter by game type slug to
+        return only vendors that have games of that type.
+      parameters:
+        - name: type
+          in: query
+          description: Filter by game type slug (e.g. `slot`)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of active vendors
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/GameVendor'
+              example:
+                success: true
+                data:
+                  - id: 1
+                    slug: pragmatic-play
+                    name: Pragmatic Play
+                    logo_url: https://cdn.example.com/vendors/pragmatic-play.png
+                    sort_order: 10
+                    game_count: 142
+                message: null
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /games/types:
+    get:
+      operationId: listGameTypes
+      tags: [Catalog]
+      summary: List active game types
+      responses:
+        '200':
+          description: List of game types
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/GameType'
+              example:
+                success: true
+                data:
+                  - id: 1
+                    slug: slot
+                    name: Slots
+                    icon: slot-icon.svg
+                    game_count: 340
+                message: null
+
+  /games/collections/{slug}:
+    get:
+      operationId: getGameCollection
+      tags: [Catalog]
+      summary: Get a curated game collection by slug
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+            example: popular
+      responses:
+        '200':
+          description: Collection with embedded game list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/GameCollection'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /games:
+    get:
+      operationId: listGames
+      tags: [Catalog]
+      summary: List active games (paginated)
+      parameters:
+        - name: vendor
+          in: query
+          description: Filter by vendor ID
+          schema:
+            type: integer
+        - name: type
+          in: query
+          description: Filter by game type slug (e.g. `slot`, `live`)
+          schema:
+            type: string
+        - name: collection
+          in: query
+          description: Filter by collection slug — returns only games in that collection
+          schema:
+            type: string
+        - name: search
+          in: query
+          description: Full-text search on game name
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Paginated game list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [items, pagination]
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Game'
+                          pagination:
+                            $ref: '#/components/schemas/Pagination'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /games/{id}:
+    get:
+      operationId: getGame
+      tags: [Catalog]
+      summary: Get game detail by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Game detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Game'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─── Launch (service-key protected) ────────────────────────────────────────
+
+  /games/{id}/launch:
+    post:
+      operationId: launchGame
+      tags: [Launch]
+      summary: Launch a game session by Hub game ID
+      description: >
+        Creates a `game_sessions` record, calls the upstream provider auth/launch
+        API, and returns a one-time launch URL valid for the session TTL.
+
+        Requires `X-Hub-Service-Key` header.
+      security:
+        - hubServiceKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Hub-internal game ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GameLaunchRequest'
+            example:
+              player_id: 4231
+              nickname: CoolPlayer
+              username: cool_player
+              country: KR
+              language: ko
+              currency: USD
+              ip: 203.0.113.42
+              return_url: https://casino.example.com/lobby
+      responses:
+        '200':
+          description: Game session launched successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/GameLaunchResult'
+              example:
+                success: true
+                data:
+                  launch_url: https://provider.example.com/game?token=abc123
+                  session_id: 9001
+                  session_token: dGhpcyBpcyBhIHNhbXBsZSB0b2tlbg==
+                  expires_at: '2026-10-08T04:00:00+00:00'
+                message: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '502':
+          description: Provider launch error — upstream provider rejected or timed out
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /games/launch:
+    post:
+      operationId: launchGameByCode
+      tags: [Launch]
+      summary: Launch a game session by provider slug + external game code
+      description: >
+        Resolves the Hub game by `provider_slug` + `external_code`, then
+        performs the same launch flow as `POST /games/{id}/launch`.
+
+        Useful when the caller knows the provider-native code but not the Hub
+        internal ID.
+
+        Requires `X-Hub-Service-Key` header.
+      security:
+        - hubServiceKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GameLaunchByCodeRequest'
+            example:
+              player_id: 4231
+              provider_slug: booming
+              external_code: vs20fruitsw
+              country: KR
+              language: ko
+              currency: USD
+              ip: 203.0.113.42
+      responses:
+        '200':
+          description: Game session launched successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/GameLaunchResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '502':
+          description: Provider launch error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  # ─── Admin / integration (service-key protected) ───────────────────────────
+
+  /providers:
+    get:
+      operationId: listProviders
+      tags: [Admin]
+      summary: List all game providers registered in Hub
+      description: >
+        Returns all providers sorted by slug. Used by Platform to reconcile its
+        own provider registry against the Hub's authoritative list.
+
+        Requires `X-Hub-Service-Key` header.
+      security:
+        - hubServiceKey: []
+      responses:
+        '200':
+          description: Provider list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [providers]
+                        properties:
+                          providers:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/GameProvider'
+              example:
+                success: true
+                data:
+                  providers:
+                    - id: 1
+                      slug: booming
+                      name: Booming Games
+                      status: active
+                    - id: 2
+                      slug: cq9
+                      name: CQ9 Gaming
+                      status: active
+                message: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /catalog/export:
+    get:
+      operationId: exportGameCatalog
+      tags: [Admin]
+      summary: Full catalog export (providers, vendors, halls, games)
+      description: >
+        Returns the complete Hub game catalog for Platform synchronisation.
+        Optionally scoped to a single provider by `provider` slug.
+
+        This is a bulk, flat-file-style export intended for catalog sync jobs —
+        **not** for real-time game browsing (use `GET /games` instead).
+
+        Requires `X-Hub-Service-Key` header.
+      security:
+        - hubServiceKey: []
+      parameters:
+        - name: provider
+          in: query
+          description: Scope the export to a single provider slug (returns that provider's providers, vendors, halls and games only)
+          schema:
+            type: string
+            example: booming
+      responses:
+        '200':
+          description: Full catalog snapshot
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CatalogExport'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    hubServiceKey:
+      type: apiKey
+      in: header
+      name: X-Hub-Service-Key
+      description: >
+        Shared secret provisioned per tenant in Hub configuration.
+        Must be sent with every protected request.
+
+  parameters:
+    PerPage:
+      name: per_page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid X-Hub-Service-Key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            error:
+              code: UNAUTHORIZED
+              message: Invalid or missing service key.
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            error:
+              code: NOT_FOUND
+              message: Game not found.
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            error:
+              code: VALIDATION_ERROR
+              message: Invalid filter parameter.
+
+  schemas:
+    # ── Envelope ─────────────────────────────────────────────────────────────
+
+    SuccessEnvelope:
+      type: object
+      required: [success, data, message]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data: {}
+        message:
+          type: string
+          nullable: true
+
+    ErrorEnvelope:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: Invalid filter parameter.
+
+    # ── Pagination ────────────────────────────────────────────────────────────
+
+    Pagination:
+      type: object
+      required: [current_page, per_page, total, last_page]
+      properties:
+        current_page:
+          type: integer
+          example: 1
+        per_page:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 340
+        last_page:
+          type: integer
+          example: 17
+
+    # ── Game catalog ──────────────────────────────────────────────────────────
+
+    GameVendor:
+      type: object
+      required: [id, slug, name, sort_order, game_count]
+      properties:
+        id:
+          type: integer
+          example: 1
+        slug:
+          type: string
+          example: pragmatic-play
+        name:
+          type: string
+          example: Pragmatic Play
+        logo_url:
+          type: string
+          nullable: true
+          example: https://cdn.example.com/vendors/pragmatic-play.png
+        sort_order:
+          type: integer
+          example: 10
+        game_count:
+          type: integer
+          example: 142
+
+    GameVendorRef:
+      description: Embedded vendor reference on a Game object
+      type: object
+      required: [id, slug, name]
+      properties:
+        id:
+          type: integer
+        slug:
+          type: string
+        name:
+          type: string
+
+    GameType:
+      type: object
+      required: [id, slug, name, game_count]
+      properties:
+        id:
+          type: integer
+          example: 1
+        slug:
+          type: string
+          example: slot
+        name:
+          type: string
+          example: Slots
+        icon:
+          type: string
+          nullable: true
+          example: slot-icon.svg
+        game_count:
+          type: integer
+          example: 340
+
+    GameTypeRef:
+      description: Embedded type reference on a Game object
+      type: object
+      required: [id, slug, name]
+      properties:
+        id:
+          type: integer
+        slug:
+          type: string
+        name:
+          type: string
+
+    GameProviderRef:
+      description: Embedded provider reference on a Game object
+      type: object
+      required: [slug, name]
+      properties:
+        slug:
+          type: string
+          example: booming
+        name:
+          type: string
+          example: Booming Games
+
+    Game:
+      description: >
+        Game as returned by the Hub catalog endpoints. Includes an embedded
+        `provider` reference in addition to the vendor/type refs that appear
+        in the Player API.
+      type: object
+      required: [id, name, game_code]
+      properties:
+        id:
+          type: integer
+          example: 5001
+        name:
+          type: string
+          example: Fruit Slots Wild
+        name_ko:
+          type: string
+          nullable: true
+          example: 과일 슬롯 와일드
+        thumbnail:
+          type: string
+          nullable: true
+          format: uri
+          example: https://cdn.example.com/games/fruit-slots-wild.jpg
+        game_code:
+          type: string
+          description: Provider-native external code
+          example: vs20fruitsw
+        symbol:
+          type: string
+          nullable: true
+          example: FRUIT_WILD
+        vendor:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/GameVendorRef'
+        provider:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/GameProviderRef'
+        type:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/GameTypeRef'
+
+    GameCollection:
+      type: object
+      required: [slug, name, games]
+      properties:
+        slug:
+          type: string
+          example: popular
+        name:
+          type: string
+          example: Popular Games
+        games:
+          type: array
+          items:
+            $ref: '#/components/schemas/Game'
+
+    # ── Launch ────────────────────────────────────────────────────────────────
+
+    GameLaunchRequest:
+      type: object
+      required: [player_id]
+      properties:
+        player_id:
+          type: integer
+          description: Platform player ID
+          example: 4231
+        nickname:
+          type: string
+          nullable: true
+          maxLength: 100
+          example: CoolPlayer
+        username:
+          type: string
+          nullable: true
+          maxLength: 100
+          example: cool_player
+        country:
+          type: string
+          nullable: true
+          minLength: 2
+          maxLength: 2
+          description: ISO 3166-1 alpha-2 country code
+          example: KR
+        language:
+          type: string
+          nullable: true
+          maxLength: 10
+          description: IETF language tag
+          example: ko
+        email:
+          type: string
+          nullable: true
+          format: email
+          maxLength: 255
+          example: player@example.com
+        date_of_birth:
+          type: string
+          nullable: true
+          format: date
+          example: '1990-05-15'
+        registered_at:
+          type: string
+          nullable: true
+          format: date
+          description: Player registration date (YYYY-MM-DD)
+          example: '2024-01-01'
+        status:
+          type: string
+          nullable: true
+          maxLength: 30
+          description: Player account status (e.g. `active`, `suspended`)
+          example: active
+        currency:
+          type: string
+          nullable: true
+          maxLength: 10
+          description: Player wallet currency. Defaults to USD.
+          default: USD
+          example: USD
+        ip:
+          type: string
+          nullable: true
+          maxLength: 45
+          description: Player IP address (IPv4 or IPv6)
+          example: 203.0.113.42
+        return_url:
+          type: string
+          nullable: true
+          format: uri
+          maxLength: 500
+          description: URL the player is sent to after closing the game
+          example: https://casino.example.com/lobby
+
+    GameLaunchByCodeRequest:
+      description: >
+        Same player context as `GameLaunchRequest` plus `provider_slug` and
+        `external_code` to resolve the game without a Hub internal ID.
+      allOf:
+        - $ref: '#/components/schemas/GameLaunchRequest'
+        - type: object
+          required: [provider_slug, external_code]
+          properties:
+            provider_slug:
+              type: string
+              maxLength: 50
+              description: Hub provider slug (e.g. `booming`, `cq9`)
+              example: booming
+            external_code:
+              type: string
+              maxLength: 100
+              description: Provider-native game code
+              example: vs20fruitsw
+
+    GameLaunchResult:
+      type: object
+      required: [launch_url, session_id, session_token]
+      properties:
+        launch_url:
+          type: string
+          format: uri
+          description: One-time URL that opens the game in the player's browser
+          example: https://provider.example.com/game?token=abc123xyz
+        session_id:
+          type: integer
+          description: Hub `game_sessions.id`
+          example: 9001
+        session_token:
+          type: string
+          description: >
+            Opaque token that identifies this session. Used by the provider's
+            wallet callbacks to authenticate requests to Hub.
+          example: dGhpcyBpcyBhIHNhbXBsZSB0b2tlbg==
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Session expiry in ISO 8601 format
+          example: '2026-10-08T04:00:00+00:00'
+
+    # ── Provider / catalog admin ──────────────────────────────────────────────
+
+    GameProvider:
+      type: object
+      required: [id, slug, name, status]
+      properties:
+        id:
+          type: integer
+          example: 1
+        slug:
+          type: string
+          example: booming
+        name:
+          type: string
+          example: Booming Games
+        status:
+          type: string
+          enum: [active, inactive]
+          example: active
+
+    CatalogExport:
+      description: >
+        Flat-file catalog snapshot returned by `GET /catalog/export`.
+        Designed for full or incremental sync by Platform.
+      type: object
+      required: [providers, vendors, halls, games]
+      properties:
+        providers:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogProvider'
+        vendors:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogVendor'
+        halls:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogHall'
+        games:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogGame'
+
+    CatalogProvider:
+      type: object
+      required: [id, slug, name, status]
+      properties:
+        id:
+          type: integer
+        slug:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive]
+
+    CatalogVendor:
+      type: object
+      required: [id, slug, name, status, sort_order]
+      properties:
+        id:
+          type: integer
+        slug:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive]
+        sort_order:
+          type: integer
+
+    CatalogHall:
+      description: Provider hall (game lobby/sub-category used by some providers)
+      type: object
+      required: [id, provider_id, external_id, name, status]
+      properties:
+        id:
+          type: integer
+        provider_id:
+          type: integer
+        external_id:
+          type: string
+          description: Provider-native hall identifier
+        name:
+          type: string
+        vendor_id:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive]
+
+    CatalogGame:
+      description: Full game record as stored in Hub (richer than the public `Game` shape)
+      type: object
+      required: [id, provider_id, hall_id, external_code, name, status]
+      properties:
+        id:
+          type: integer
+        provider_id:
+          type: integer
+        hall_id:
+          type: integer
+        vendor_id:
+          type: integer
+          nullable: true
+        external_code:
+          type: string
+          description: Provider-native game code
+        name:
+          type: string
+        name_ko:
+          type: string
+          nullable: true
+        symbol:
+          type: string
+          nullable: true
+        thumbnail:
+          type: string
+          nullable: true
+          format: uri
+        status:
+          type: string
+          enum: [active, inactive]
+        metadata:
+          type: object
+          description: Provider-specific raw metadata stored at catalog sync time
+          additionalProperties: true
