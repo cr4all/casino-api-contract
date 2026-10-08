@@ -48,6 +48,14 @@ Derived from `routes/api.php`, `GameController`, `LaunchGameAction`, `FormatGame
 
 ## Hub Wallet Callback API
 
+### [hub-wallet-callback-1.0.1] - 2026-10-07
+
+**Spec:** `openapi/hub-wallet-callback-v1.yaml`
+
+**Changed:**
+
+- Callback paths are the full Platform path. Admin Wallet URL is the origin; Hub appends `/api/internal/game-hub`, so each call is `{origin}/api/internal/game-hub/wallet/{operation}`.
+
 ### [hub-wallet-callback-1.0.0] - 2026-10-07
 
 **Spec:** `openapi/hub-wallet-callback-v1.yaml`

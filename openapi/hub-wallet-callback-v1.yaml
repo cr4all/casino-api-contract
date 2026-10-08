@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Casino Game Hub — Wallet Callback API
-  version: 1.0.0
+  version: 1.0.1
   description: |
     Wallet callback endpoints that `casino-game-hub` calls on the **Platform**
     (`casino-backend`) during active game sessions.
@@ -12,7 +12,7 @@ info:
     Game Provider  ──inbound──►  Hub /provider/{slug}/*
                                      │
                                      ▼  (outgoing callbacks defined here)
-                                 Platform /wallet/{balance|bet|win|refund|...}
+                                 Platform /api/internal/game-hub/wallet/{balance|bet|win|refund|...}
     ```
 
     When a game provider sends a wallet event (balance check, bet, win, refund)
@@ -27,10 +27,21 @@ info:
     The key is the per-tenant service key stored in `tenants.service_key`
     (or the default key from Hub configuration).
 
-    ## Base URL
+    ## Full URL
 
-    The base URL is configurable per tenant via `tenants.wallet_base_url`
-    (or `GAME_HUB_PLATFORM_WALLET_URL` for the default tenant).
+    Admin tenant onboarding accepts a Platform **origin** as Wallet URL
+    (for example `http://10.0.1.20:8000`). When the path is empty, Hub
+    `WalletBaseUrl::normalize` appends `/api/internal/game-hub` and stores
+    that as `tenants.wallet_base_url`.
+
+    Each callback is then `{wallet_base_url}/wallet/{operation}`:
+
+    | Admin Wallet URL | Stored wallet_base_url | Balance callback |
+    |------------------|------------------------|------------------|
+    | `http://10.0.1.20:8000` | `http://10.0.1.20:8000/api/internal/game-hub` | `http://10.0.1.20:8000/api/internal/game-hub/wallet/balance` |
+
+    Paths in this document are the full path on the Platform origin
+    (`/api/internal/game-hub/wallet/...`). Servers below are that origin.
 
     ## Money format
 
@@ -57,16 +68,16 @@ info:
 
 servers:
   - url: http://localhost:8000
-    description: Local Platform development
+    description: Local Platform origin. Hub appends /api/internal/game-hub before /wallet/*.
   - url: https://api.example.com
-    description: Production Platform
+    description: Production Platform origin. Hub appends /api/internal/game-hub before /wallet/*.
 
 tags:
   - name: WalletCallback
     description: Wallet operations triggered by game provider callbacks
 
 paths:
-  /wallet/balance:
+  /api/internal/game-hub/wallet/balance:
     post:
       operationId: walletBalance
       tags: [WalletCallback]
@@ -111,7 +122,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
-  /wallet/bet:
+  /api/internal/game-hub/wallet/bet:
     post:
       operationId: walletBet
       tags: [WalletCallback]
@@ -183,7 +194,7 @@ paths:
         '422':
           $ref: '#/components/responses/InsufficientBalance'
 
-  /wallet/win:
+  /api/internal/game-hub/wallet/win:
     post:
       operationId: walletWin
       tags: [WalletCallback]
@@ -245,7 +256,7 @@ paths:
         '409':
           $ref: '#/components/responses/DuplicateTransaction'
 
-  /wallet/refund:
+  /api/internal/game-hub/wallet/refund:
     post:
       operationId: walletRefund
       tags: [WalletCallback]
@@ -312,7 +323,7 @@ paths:
         '409':
           $ref: '#/components/responses/DuplicateTransaction'
 
-  /wallet/transfer-in:
+  /api/internal/game-hub/wallet/transfer-in:
     post:
       operationId: walletTransferIn
       tags: [WalletCallback]
@@ -367,7 +378,7 @@ paths:
         '409':
           $ref: '#/components/responses/DuplicateTransaction'
 
-  /wallet/transfer-out:
+  /api/internal/game-hub/wallet/transfer-out:
     post:
       operationId: walletTransferOut
       tags: [WalletCallback]
