@@ -3304,14 +3304,22 @@ components:
           type: integer
         commissions_count:
           type: integer
+        currency:
+          type: string
+          description: Currency of the aggregate commission totals. Payout totals are USD.
+          example: USD
         total_commission:
           type: string
+          description: Sum of commission amount_usd.
         pending_commission:
           type: string
+          description: Sum of pending commission amount_usd.
         available_payout:
           type: string
+          description: Pending commission amount_usd earned before the current month.
         accruing_commission:
           type: string
+          description: Pending commission amount_usd earned in the current month.
         sub_affiliates_count:
           type: integer
         downline_players_count:
@@ -3473,6 +3481,13 @@ components:
           enum: [cpa, revshare, override]
         amount:
           type: string
+          description: Commission in its source currency. CPA is USD. Revshare is the player wallet currency.
+        currency:
+          type: string
+          example: USD
+        amount_usd:
+          type: string
+          description: USD equivalent included in payout and stats totals.
         reference_type:
           type: string
         reference_id:
